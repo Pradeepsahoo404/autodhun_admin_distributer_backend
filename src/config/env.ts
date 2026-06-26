@@ -3,16 +3,6 @@ import { z } from 'zod';
 
 dotenv.config();
 
-/** Parses env booleans correctly — `z.coerce.boolean()` treats the string "false" as true. */
-const envBoolean = z
-  .union([z.boolean(), z.string(), z.number()])
-  .transform((val) => {
-    if (typeof val === 'boolean') return val;
-    if (typeof val === 'number') return val !== 0;
-    const normalized = val.trim().toLowerCase();
-    return normalized === 'true' || normalized === '1' || normalized === 'yes';
-  });
-
 /**
  * Strongly-typed, validated environment configuration.
  * The process will fail fast on boot if any required variable is missing or malformed,
@@ -40,11 +30,9 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional().default(''),
   GOOGLE_CLIENT_SECRET: z.string().optional().default(''),
 
-  SMTP_HOST: z.string().optional().default(''),
-  SMTP_PORT: z.coerce.number().default(587),
-  SMTP_SECURE: envBoolean.default(false),
-  SMTP_USER: z.string().optional().default(''),
-  SMTP_PASS: z.string().optional().default(''),
+  RESEND_API_KEY: z.string().optional().default(''),
+  /** Full sender, e.g. `Autodhun <help@autodhun.com>`. Falls back to MAIL_FROM_NAME + MAIL_FROM_EMAIL. */
+  MAIL_FROM: z.string().optional().default(''),
   MAIL_FROM_NAME: z.string().default('Autodhun Admin'),
   MAIL_FROM_EMAIL: z.string().default('no-reply@autodhun.com'),
 

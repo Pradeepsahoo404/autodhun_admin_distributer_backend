@@ -1,24 +1,20 @@
-import nodemailer, { Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 import { env, isDevelopment, isProduction } from '@/config/env';
 import { logger } from '@/config/logger';
 
-let transporter: Transporter | null = null;
+let resend: Resend | null = null;
 
-const getTransporter = (): Transporter | null => {
-  if (!env.SMTP_HOST || !env.SMTP_USER) return null;
-  if (!transporter) {
-    // Port 587 → STARTTLS (secure: false). Port 465 → implicit TLS (secure: true).
-    const secure = env.SMTP_SECURE || env.SMTP_PORT === 465;
-    transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure,
-      requireTLS: !secure && env.SMTP_PORT === 587,
-      auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
-      tls: { minVersion: 'TLSv1.2' },
-    });
+const getResend = (): Resend | null => {
+  if (!env.RESEND_API_KEY) return null;
+  if (!resend) {
+    resend = new Resend(env.RESEND_API_KEY);
   }
-  return transporter;
+  return resend;
+};
+
+const getFromAddress = (): string => {
+  if (env.MAIL_FROM) return env.MAIL_FROM;
+  return `${env.MAIL_FROM_NAME} <${env.MAIL_FROM_EMAIL}>`;
 };
 
 interface SendMailOptions {
@@ -26,7 +22,7 @@ interface SendMailOptions {
   subject: string;
   html: string;
   text?: string;
-  /** Logged to console in development when SMTP delivery fails. */
+  /** Logged to console in development when email delivery fails. */
   devOtpFallback?: string;
 }
 
@@ -37,20 +33,21 @@ export const sendMail = async ({
   text,
   devOtpFallback,
 }: SendMailOptions): Promise<void> => {
-  const tx = getTransporter();
-  const from = `"${env.MAIL_FROM_NAME}" <${env.SMTP_USER || env.MAIL_FROM_EMAIL}>`;
+  const client = getResend();
+  const from = getFromAddress();
 
-  if (!tx) {
-    logger.warn(`[MAIL:DEV] SMTP not configured. Email to ${to} not sent. Subject: ${subject}`);
+  if (!client) {
+    logger.warn(`[MAIL:DEV] Resend not configured. Email to ${to} not sent. Subject: ${subject}`);
     if (devOtpFallback) logger.warn(`[MAIL:DEV] OTP for ${to}: ${devOtpFallback}`);
     return;
   }
 
   try {
-    await tx.sendMail({ from, to, subject, html, text });
+    const { error } = await client.emails.send({ from, to, subject, html, text });
+    if (error) throw error;
     if (!isProduction) logger.debug(`Email sent to ${to}: ${subject}`);
   } catch (error) {
-    logger.error('SMTP send failed', error);
+    logger.error('Resend send failed', error);
     if (isDevelopment && devOtpFallback) {
       logger.warn(`[MAIL:DEV] Delivery failed — use this OTP for ${to}: ${devOtpFallback}`);
       return;
