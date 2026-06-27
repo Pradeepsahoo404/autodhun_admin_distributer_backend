@@ -15,6 +15,10 @@ export const USER_STATUS = {
 
 export type UserStatus = (typeof USER_STATUS)[keyof typeof USER_STATUS];
 
+/** Shown when a deactivated admin tries to sign in or use an existing session. */
+export const USER_INACTIVE_MESSAGE =
+  'Your account is inactive. To make it active, please contact the Owner.';
+
 /** Role status — active roles can be assigned; inactive are hidden from assignment. */
 export const ROLE_STATUS = {
   ACTIVE: 'active',

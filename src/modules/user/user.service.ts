@@ -135,23 +135,43 @@ class UserService {
     const user = await userRepository.findByIdWithRole(id);
     if (!user) throw ApiError.notFound('User not found');
 
+    if (id === actorId && dto.status && dto.status !== USER_STATUS.ACTIVE) {
+      throw ApiError.badRequest('You cannot deactivate your own account');
+    }
+
     const currentRole = user.role as unknown as IRole;
     if (currentRole.slug === ROLES.SUPER_ADMIN && (dto.role || dto.status === USER_STATUS.BLOCKED)) {
       throw ApiError.forbidden('Super Admin account cannot be downgraded or blocked');
     }
 
-    const update: Partial<IUser> = { updatedBy: actorId as never };
-    if (dto.firstName !== undefined) update.firstName = dto.firstName;
-    if (dto.lastName !== undefined) update.lastName = dto.lastName;
-    if (dto.firstName !== undefined || dto.lastName !== undefined) {
-      update.name = `${dto.firstName ?? user.firstName} ${dto.lastName ?? user.lastName}`.trim();
-    }
-    if (dto.role) update.role = dto.role as never;
-    if (dto.status) update.status = dto.status;
-    if (dto.password) update.password = await hashPassword(dto.password);
+    const $set: Record<string, unknown> = { updatedBy: actorId as never };
 
-    const updated = await userRepository.updateById(id, update);
-    return updated as IUser;
+    if (dto.firstName !== undefined) $set.firstName = dto.firstName;
+    if (dto.lastName !== undefined) $set.lastName = dto.lastName;
+    if (dto.firstName !== undefined || dto.lastName !== undefined) {
+      $set.name = `${dto.firstName ?? user.firstName} ${dto.lastName ?? user.lastName}`.trim();
+    }
+    if (dto.role) $set.role = dto.role;
+    if (dto.status) $set.status = dto.status;
+    if (dto.password) $set.password = await hashPassword(dto.password);
+
+    if (dto.postalAddress !== undefined) $set['profile.postalAddress'] = dto.postalAddress;
+    if (dto.state !== undefined) $set['profile.state'] = dto.state;
+    if (dto.countryRegion !== undefined) $set['profile.countryRegion'] = dto.countryRegion;
+    if (dto.phoneNumber !== undefined) $set['profile.phoneNumber'] = dto.phoneNumber;
+    if (dto.labelName !== undefined) $set['profile.labelName'] = dto.labelName;
+
+    if (dto.bankName !== undefined) $set['bankDetails.bankName'] = dto.bankName;
+    if (dto.accountNumber !== undefined) $set['bankDetails.accountNumber'] = dto.accountNumber;
+    if (dto.ifscCode !== undefined) $set['bankDetails.ifscCode'] = dto.ifscCode;
+    if (dto.swiftCode !== undefined) $set['bankDetails.swiftCode'] = dto.swiftCode;
+    if (dto.micrCode !== undefined) $set['bankDetails.micrCode'] = dto.micrCode;
+
+    const updated = await userRepository.updateById(id, { $set });
+    if (!updated) throw ApiError.internal('Failed to update user');
+
+    const populated = await userRepository.findByIdWithRole(id);
+    return populated as IUser;
   }
 
   async updateStatus(id: string, status: typeof USER_STATUS[keyof typeof USER_STATUS], actorId: string): Promise<IUser> {
@@ -168,6 +188,33 @@ class UserService {
     if (role.slug === ROLES.SUPER_ADMIN) throw ApiError.forbidden('Super Admin account cannot be deleted');
 
     await userRepository.deleteById(id);
+  }
+
+  async getAdminCreationStats(): Promise<{
+    total: number;
+    last7Days: number;
+    last30Days: number;
+    last90Days: number;
+    last365Days: number;
+  }> {
+    const adminRole = await roleRepository.findBySlug(ROLES.ADMIN);
+    if (!adminRole) {
+      return { total: 0, last7Days: 0, last30Days: 0, last90Days: 0, last365Days: 0 };
+    }
+
+    const roleId = adminRole._id.toString();
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    const [total, last7Days, last30Days, last90Days, last365Days] = await Promise.all([
+      userRepository.countAdmins(roleId),
+      userRepository.countAdminsCreatedSince(new Date(now - 7 * dayMs), roleId),
+      userRepository.countAdminsCreatedSince(new Date(now - 30 * dayMs), roleId),
+      userRepository.countAdminsCreatedSince(new Date(now - 90 * dayMs), roleId),
+      userRepository.countAdminsCreatedSince(new Date(now - 365 * dayMs), roleId),
+    ]);
+
+    return { total, last7Days, last30Days, last90Days, last365Days };
   }
 }
 

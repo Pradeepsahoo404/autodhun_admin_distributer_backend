@@ -3,7 +3,7 @@ import { verifyAccessToken } from '@/utils/jwt';
 import { ApiError } from '@/utils/ApiError';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { userRepository } from '@/modules/user/user.repository';
-import { ROLES, USER_STATUS } from '@/constants';
+import { ROLES, USER_STATUS, USER_INACTIVE_MESSAGE } from '@/constants';
 import { IRole } from '@/modules/role/role.model';
 
 /**
@@ -22,7 +22,7 @@ export const authenticate: RequestHandler = asyncHandler(async (req, _res, next)
 
   const user = await userRepository.findByIdWithRole(payload.sub);
   if (!user) throw ApiError.unauthorized('User no longer exists');
-  if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden('Account is not active');
+  if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
 
   const role = user.role as unknown as IRole;
   req.user = {

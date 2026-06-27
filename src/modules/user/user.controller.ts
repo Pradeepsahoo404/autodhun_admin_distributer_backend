@@ -44,6 +44,11 @@ class UserController {
     await userService.remove(req.params.id, req.user!.id);
     sendSuccess(res, null, 'User deleted');
   });
+
+  adminStats = asyncHandler(async (_req: Request, res: Response) => {
+    const stats = await userService.getAdminCreationStats();
+    sendSuccess(res, stats, 'Admin stats fetched');
+  });
 }
 
 export const userController = new UserController();

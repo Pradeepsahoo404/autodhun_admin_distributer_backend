@@ -6,7 +6,7 @@ import { issueTokenPair, verifyRefreshToken } from '@/utils/jwt';
 import { verifyGoogleIdToken } from '@/utils/google';
 import { deleteCloudinaryImage, uploadAvatarImage } from '@/utils/cloudinaryUpload';
 import { ApiError } from '@/utils/ApiError';
-import { AUTH_PROVIDER, OTP_PURPOSE, ROLES, USER_STATUS } from '@/constants';
+import { AUTH_PROVIDER, OTP_PURPOSE, ROLES, USER_STATUS, USER_INACTIVE_MESSAGE } from '@/constants';
 import { IUser } from '@/modules/user/user.model';
 import { IRole } from '@/modules/role/role.model';
 import { AuthResult, AuthTokens, AuthUserDto, PendingOtpResult, LoginResult, toAuthUserDto } from './auth.types';
@@ -142,7 +142,7 @@ class AuthService {
     if (!valid) throw ApiError.unauthorized('Invalid email or password');
 
     if (!user.emailVerified) throw ApiError.forbidden('Please verify your email before logging in');
-    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden('Your account is not active');
+    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
 
     await this.markTermsAccepted(user._id.toString());
 
@@ -164,6 +164,7 @@ class AuthService {
   async verifyLoginOtp(email: string, otp: string): Promise<AuthResult> {
     const user = await userRepository.findByEmail(email);
     if (!user) throw ApiError.notFound('Account not found');
+    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
 
     await otpService.verify(user._id.toString(), otp, OTP_PURPOSE.LOGIN);
 
@@ -192,7 +193,7 @@ class AuthService {
       throw ApiError.badRequest('Password reset is not available for Google sign-in accounts');
     }
     if (!user.emailVerified) throw ApiError.badRequest('Please verify your email before resetting your password');
-    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden('Your account is not active');
+    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
 
     const { resendAfter } = await otpService.generateAndSend(
       user._id.toString(),
@@ -268,7 +269,7 @@ class AuthService {
       })) as IUser;
     }
 
-    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden('Your account is not active');
+    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
     return this.buildAuthResult(user);
   }
 
@@ -276,7 +277,7 @@ class AuthService {
   async getCurrentUser(userId: string): Promise<AuthUserDto> {
     const user = await userRepository.findByIdWithRole(userId);
     if (!user) throw ApiError.unauthorized('User no longer exists');
-    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden('Account is not active');
+    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
     return toAuthUserDto(user, this.resolveRoleSlug(user));
   }
 
@@ -383,7 +384,7 @@ class AuthService {
     const payload = verifyRefreshToken(refreshToken);
     const user = await userRepository.findByIdWithRole(payload.sub);
     if (!user) throw ApiError.unauthorized('User no longer exists');
-    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden('Account is not active');
+    if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
 
     return issueTokenPair({
       sub: user._id.toString(),

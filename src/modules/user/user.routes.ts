@@ -12,6 +12,12 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', checkPermission(MODULE, 'view'), validate({ query: paginationQuerySchema }), userController.list);
+router.get(
+  '/stats/admins-created',
+  superAdminOnly,
+  checkPermission(MODULE, 'view'),
+  userController.adminStats,
+);
 router.post(
   '/invite-admin',
   superAdminOnly,

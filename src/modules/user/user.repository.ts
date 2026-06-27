@@ -55,6 +55,17 @@ class UserRepository extends BaseRepository<IUser> {
 
     return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
+
+  async countAdminsCreatedSince(since: Date, adminRoleId: string): Promise<number> {
+    return UserModel.countDocuments({
+      role: adminRoleId,
+      createdAt: { $gte: since },
+    }).exec();
+  }
+
+  async countAdmins(adminRoleId: string): Promise<number> {
+    return UserModel.countDocuments({ role: adminRoleId }).exec();
+  }
 }
 
 export const userRepository = new UserRepository();

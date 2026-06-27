@@ -48,6 +48,15 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string().optional().default(''),
   CLOUDINARY_API_KEY: z.string().optional().default(''),
   CLOUDINARY_API_SECRET: z.string().optional().default(''),
+
+  /** Server-level kill switch for the scheduled auto-delete cron. */
+  CRON_AUTO_DELETE_ENABLED: z
+    .string()
+    .optional()
+    .default('true')
+    .transform((v) => v === 'true' || v === '1'),
+  /** Cron expression — default: daily at 2:00 AM. */
+  CRON_AUTO_DELETE_SCHEDULE: z.string().default('0 2 * * *'),
 });
 
 const parsed = envSchema.safeParse(process.env);

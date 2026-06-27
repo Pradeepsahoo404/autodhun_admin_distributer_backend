@@ -16,6 +16,7 @@ import { takedownRoutes } from '@/modules/takedown/takedown.routes';
 import { referenceOverlapsRoutes } from '@/modules/reference-overlaps/reference-overlaps.routes';
 import { registeredIssuesModules } from '@/modules/issues-shared/issues-module.registry';
 import { notificationRoutes } from '@/modules/notification/notification.routes';
+import { cronjobSettingsRoutes } from '@/modules/cronjob-settings/cronjob-settings.routes';
 
 const router = Router();
 
@@ -42,5 +43,6 @@ for (const mod of registeredIssuesModules) {
   router.use(mod.apiPath, mod.routes);
 }
 router.use('/notifications', notificationRoutes);
+router.use('/cronjob-settings', cronjobSettingsRoutes);
 
 export const apiRouter = router;
