@@ -1,26 +1,15 @@
 import { z } from 'zod';
 import { ALLOWLIST_STATUS } from './allowlist.model';
-
-const labelField = z
-  .string()
-  .trim()
-  .min(1, 'Label name is required')
-  .max(200, 'Label name must be at most 200 characters');
-
-const channelLinkField = z
-  .string()
-  .trim()
-  .url('Enter a valid channel link')
-  .max(500);
+import { textField, urlField } from '@/validators/field.validator';
 
 export const createAllowlistSchema = z.object({
-  labelName: labelField,
-  channelLink: channelLinkField,
+  labelName: textField('Label name'),
+  channelLink: urlField('Channel link'),
 });
 
 export const updateAllowlistSchema = z.object({
-  labelName: labelField.optional(),
-  channelLink: channelLinkField.optional(),
+  labelName: textField('Label name').optional(),
+  channelLink: urlField('Channel link').optional(),
 });
 
 export const updateStatusSchema = z.object({

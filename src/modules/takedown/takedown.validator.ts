@@ -1,39 +1,17 @@
 import { z } from 'zod';
 import { TAKEDOWN_STATUS } from './takedown.model';
-
-const labelField = z
-  .string()
-  .trim()
-  .min(1, 'Label name is required')
-  .max(200, 'Label name must be at most 200 characters');
-
-const songLinkField = z
-  .string()
-  .trim()
-  .url('Enter a valid song link')
-  .max(500);
+import { isrcField, textField, urlField } from '@/validators/field.validator';
 
 export const createTakedownSchema = z.object({
-  labelName: labelField,
-  isrcCode: z
-    .string()
-    .trim()
-    .min(1, 'ISRC code is required')
-    .max(20, 'ISRC code must be at most 20 characters')
-    .transform((v) => v.toUpperCase()),
-  songLink: songLinkField,
+  labelName: textField('Label name'),
+  isrcCode: isrcField,
+  songLink: urlField('Song link'),
 });
 
 export const updateTakedownSchema = z.object({
-  labelName: labelField.optional(),
-  isrcCode: z
-    .string()
-    .trim()
-    .min(1, 'ISRC code is required')
-    .max(20, 'ISRC code must be at most 20 characters')
-    .transform((v) => v.toUpperCase())
-    .optional(),
-  songLink: songLinkField.optional(),
+  labelName: textField('Label name').optional(),
+  isrcCode: isrcField.optional(),
+  songLink: urlField('Song link').optional(),
 });
 
 export const updateStatusSchema = z.object({

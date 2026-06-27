@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import { OTP_PURPOSE } from '@/constants';
+import {
+  addressField,
+  nameField,
+  optionalNameField,
+  textField,
+} from '@/validators/field.validator';
 
 const passwordSchema = z
   .string()
@@ -13,8 +19,8 @@ const otpSchema = z.string().regex(/^\d{4,8}$/, 'OTP must be 4-8 digits');
 
 export const registerSchema = z
   .object({
-    firstName: z.string().min(1, 'First name is required').max(50),
-    lastName: z.string().max(50).optional().default(''),
+    firstName: nameField('First name'),
+    lastName: optionalNameField('Last name'),
     email: z.string().email('A valid email is required').toLowerCase(),
     password: passwordSchema,
     confirmPassword: z.string(),
@@ -78,23 +84,6 @@ const optionalCode = (pattern: RegExp, message: string) =>
     .optional()
     .or(z.literal(''));
 
-const requiredText = (label: string, max: number) =>
-  z
-    .string()
-    .trim()
-    .min(1, `${label} is required`)
-    .max(max, `${label} must be at most ${max} characters`);
-
-const nameField = (label: string) =>
-  z
-    .string()
-    .trim()
-    .min(1, `${label} is required`)
-    .max(50, `${label} must be at most 50 characters`);
-
-const optionalNameField = (label: string) =>
-  z.string().trim().max(50, `${label} must be at most 50 characters`).optional().default('');
-
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Current password is required'),
@@ -109,15 +98,15 @@ export const changePasswordSchema = z
 export const updateProfileSchema = z.object({
   firstName: nameField('First name'),
   lastName: optionalNameField('Last name'),
-  postalAddress: requiredText('Postal address', 300),
-  state: requiredText('State', 100),
-  countryRegion: requiredText('Country / Region', 100),
+  postalAddress: addressField('Postal address', 300),
+  state: textField('State', 100),
+  countryRegion: textField('Country / Region', 100),
   phoneNumber: z
     .string()
     .trim()
     .min(1, 'Phone number is required')
     .regex(/^\+?[0-9]{10,15}$/, 'Enter a valid phone number'),
-  labelName: requiredText('Label name', 120),
+  labelName: textField('Label name', 120),
 });
 
 export const updateBankDetailsSchema = z.object({

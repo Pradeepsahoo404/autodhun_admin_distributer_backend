@@ -1,46 +1,22 @@
 import { z } from 'zod';
 import { PROFILE_LINKING_STATUS } from './profile-linking.model';
-
-const labelField = z
-  .string()
-  .trim()
-  .min(1, 'Label name is required')
-  .max(200, 'Label name must be at most 200 characters');
-
-const facebookPageLinkField = z
-  .string()
-  .trim()
-  .url('Enter a valid Facebook page link')
-  .max(500)
-  .refine((url) => /facebook\.com|fb\.com/i.test(url), 'Enter a valid Facebook page link');
-
-const instagramHandleField = z
-  .string()
-  .trim()
-  .min(1, 'Instagram handle name is required')
-  .max(100, 'Instagram handle name must be at most 100 characters');
+import {
+  facebookPageLinkField,
+  instagramHandleField,
+  isrcField,
+  textField,
+} from '@/validators/field.validator';
 
 export const createProfileLinkingSchema = z.object({
-  labelName: labelField,
-  isrcCode: z
-    .string()
-    .trim()
-    .min(1, 'ISRC code is required')
-    .max(20, 'ISRC code must be at most 20 characters')
-    .transform((v) => v.toUpperCase()),
+  labelName: textField('Label name'),
+  isrcCode: isrcField,
   facebookPageLink: facebookPageLinkField,
   instagramHandleName: instagramHandleField,
 });
 
 export const updateProfileLinkingSchema = z.object({
-  labelName: labelField.optional(),
-  isrcCode: z
-    .string()
-    .trim()
-    .min(1, 'ISRC code is required')
-    .max(20, 'ISRC code must be at most 20 characters')
-    .transform((v) => v.toUpperCase())
-    .optional(),
+  labelName: textField('Label name').optional(),
+  isrcCode: isrcField.optional(),
   facebookPageLink: facebookPageLinkField.optional(),
   instagramHandleName: instagramHandleField.optional(),
 });

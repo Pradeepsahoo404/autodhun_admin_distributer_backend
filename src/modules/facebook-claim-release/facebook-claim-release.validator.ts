@@ -1,20 +1,15 @@
 import { z } from 'zod';
 import { CLAIM_RELEASE_STATUS } from './facebook-claim-release.model';
+import {
+  facebookPageLinkField,
+  isrcField,
+  textField,
+} from '@/validators/field.validator';
 
 export const LABEL_NAMES_MUST_MATCH_MESSAGE =
   'Sender and receiver label names must always be the same';
 
 const normalizeLabel = (value: string) => value.trim().toLowerCase();
-
-const labelField = (label: string) =>
-  z.string().trim().min(1, `${label} is required`).max(200, `${label} must be at most 200 characters`);
-
-const facebookPageLinkField = z
-  .string()
-  .trim()
-  .url('Enter a valid Facebook page link')
-  .max(500)
-  .refine((url) => /facebook\.com|fb\.com/i.test(url), 'Enter a valid Facebook page link');
 
 function assertMatchingLabels(sender: string, receiver: string, ctx: z.RefinementCtx): void {
   if (normalizeLabel(sender) !== normalizeLabel(receiver)) {
@@ -33,15 +28,10 @@ function assertMatchingLabels(sender: string, receiver: string, ctx: z.Refinemen
 
 export const createFacebookClaimReleaseSchema = z
   .object({
-    senderLabelName: labelField('Sender label name'),
-    receiverLabelName: labelField('Receiver label name'),
+    senderLabelName: textField('Sender label name'),
+    receiverLabelName: textField('Receiver label name'),
     facebookPageLink: facebookPageLinkField,
-    isrcCode: z
-      .string()
-      .trim()
-      .min(1, 'ISRC code is required')
-      .max(20, 'ISRC code must be at most 20 characters')
-      .transform((v) => v.toUpperCase()),
+    isrcCode: isrcField,
   })
   .superRefine((data, ctx) => {
     assertMatchingLabels(data.senderLabelName, data.receiverLabelName, ctx);
@@ -49,16 +39,10 @@ export const createFacebookClaimReleaseSchema = z
 
 export const updateFacebookClaimReleaseSchema = z
   .object({
-    senderLabelName: labelField('Sender label name').optional(),
-    receiverLabelName: labelField('Receiver label name').optional(),
+    senderLabelName: textField('Sender label name').optional(),
+    receiverLabelName: textField('Receiver label name').optional(),
     facebookPageLink: facebookPageLinkField.optional(),
-    isrcCode: z
-      .string()
-      .trim()
-      .min(1, 'ISRC code is required')
-      .max(20, 'ISRC code must be at most 20 characters')
-      .transform((v) => v.toUpperCase())
-      .optional(),
+    isrcCode: isrcField.optional(),
   })
   .superRefine((data, ctx) => {
     if (data.senderLabelName !== undefined && data.receiverLabelName !== undefined) {

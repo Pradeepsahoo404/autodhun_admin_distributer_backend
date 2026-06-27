@@ -1,13 +1,11 @@
 import { z } from 'zod';
 import { CLAIM_RELEASE_STATUS } from './youtube-claim-release.model';
+import { isrcField, textField, urlField } from '@/validators/field.validator';
 
 export const LABEL_NAMES_MUST_MATCH_MESSAGE =
   'Sender and receiver label names must always be the same';
 
 const normalizeLabel = (value: string) => value.trim().toLowerCase();
-
-const labelField = (label: string) =>
-  z.string().trim().min(1, `${label} is required`).max(200, `${label} must be at most 200 characters`);
 
 function assertMatchingLabels(sender: string, receiver: string, ctx: z.RefinementCtx): void {
   if (normalizeLabel(sender) !== normalizeLabel(receiver)) {
@@ -26,15 +24,10 @@ function assertMatchingLabels(sender: string, receiver: string, ctx: z.Refinemen
 
 export const createYoutubeClaimReleaseSchema = z
   .object({
-    senderLabelName: labelField('Sender label name'),
-    receiverLabelName: labelField('Receiver label name'),
-    youtubeLink: z.string().trim().url('Enter a valid YouTube link').max(500),
-    isrcCode: z
-      .string()
-      .trim()
-      .min(1, 'ISRC code is required')
-      .max(20, 'ISRC code must be at most 20 characters')
-      .transform((v) => v.toUpperCase()),
+    senderLabelName: textField('Sender label name'),
+    receiverLabelName: textField('Receiver label name'),
+    youtubeLink: urlField('YouTube link'),
+    isrcCode: isrcField,
   })
   .superRefine((data, ctx) => {
     assertMatchingLabels(data.senderLabelName, data.receiverLabelName, ctx);
@@ -42,16 +35,10 @@ export const createYoutubeClaimReleaseSchema = z
 
 export const updateYoutubeClaimReleaseSchema = z
   .object({
-    senderLabelName: labelField('Sender label name').optional(),
-    receiverLabelName: labelField('Receiver label name').optional(),
-    youtubeLink: z.string().trim().url('Enter a valid YouTube link').max(500).optional(),
-    isrcCode: z
-      .string()
-      .trim()
-      .min(1, 'ISRC code is required')
-      .max(20, 'ISRC code must be at most 20 characters')
-      .transform((v) => v.toUpperCase())
-      .optional(),
+    senderLabelName: textField('Sender label name').optional(),
+    receiverLabelName: textField('Receiver label name').optional(),
+    youtubeLink: urlField('YouTube link').optional(),
+    isrcCode: isrcField.optional(),
   })
   .superRefine((data, ctx) => {
     if (data.senderLabelName !== undefined && data.receiverLabelName !== undefined) {

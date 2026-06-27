@@ -1,42 +1,19 @@
 import { z } from 'zod';
 import { MANUAL_CLAIMING_STATUS } from './manual-claiming.model';
-
-const labelField = z
-  .string()
-  .trim()
-  .min(1, 'Label name is required')
-  .max(200, 'Label name must be at most 200 characters');
-
-const linkField = (label: string) =>
-  z
-    .string()
-    .trim()
-    .url(`Enter a valid ${label}`)
-    .max(500);
+import { isrcField, textField, urlField } from '@/validators/field.validator';
 
 export const createManualClaimingSchema = z.object({
-  labelName: labelField,
-  originalSongLink: linkField('original song link'),
-  isrcCode: z
-    .string()
-    .trim()
-    .min(1, 'ISRC code is required')
-    .max(20, 'ISRC code must be at most 20 characters')
-    .transform((v) => v.toUpperCase()),
-  songLink: linkField('song link'),
+  labelName: textField('Label name'),
+  originalSongLink: urlField('Original song link'),
+  isrcCode: isrcField,
+  songLink: urlField('Song link'),
 });
 
 export const updateManualClaimingSchema = z.object({
-  labelName: labelField.optional(),
-  originalSongLink: linkField('original song link').optional(),
-  isrcCode: z
-    .string()
-    .trim()
-    .min(1, 'ISRC code is required')
-    .max(20, 'ISRC code must be at most 20 characters')
-    .transform((v) => v.toUpperCase())
-    .optional(),
-  songLink: linkField('song link').optional(),
+  labelName: textField('Label name').optional(),
+  originalSongLink: urlField('Original song link').optional(),
+  isrcCode: isrcField.optional(),
+  songLink: urlField('Song link').optional(),
 });
 
 export const updateStatusSchema = z.object({

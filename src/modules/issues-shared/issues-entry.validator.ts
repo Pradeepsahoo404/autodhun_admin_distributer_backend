@@ -5,16 +5,7 @@ import {
   ISSUES_ENTRY_STATUS,
 } from './issues-entry.constants';
 import { objectId } from '@/validators/common.validator';
-
-const textField = (label: string, max = 200) =>
-  z.string().trim().min(1, `${label} is required`).max(max, `${label} must be at most ${max} characters`);
-
-const isrcField = z
-  .string()
-  .trim()
-  .min(1, 'ISRC is required')
-  .max(20, 'ISRC must be at most 20 characters')
-  .transform((v) => v.toUpperCase());
+import { isrcField, textField } from '@/validators/field.validator';
 
 export const createIssuesEntrySchema = z.object({
   otherParty: textField('Other party'),

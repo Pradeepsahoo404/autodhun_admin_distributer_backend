@@ -1,31 +1,15 @@
 import { z } from 'zod';
 import { CONTENT_ID_STATUS } from './content-id.model';
-
-const labelField = z
-  .string()
-  .trim()
-  .min(1, 'Label name is required')
-  .max(200, 'Label name must be at most 200 characters');
+import { isrcField, textField } from '@/validators/field.validator';
 
 export const createContentIdSchema = z.object({
-  labelName: labelField,
-  isrcCode: z
-    .string()
-    .trim()
-    .min(1, 'ISRC is required')
-    .max(20, 'ISRC must be at most 20 characters')
-    .transform((v) => v.toUpperCase()),
+  labelName: textField('Label name'),
+  isrcCode: isrcField,
 });
 
 export const updateContentIdSchema = z.object({
-  labelName: labelField.optional(),
-  isrcCode: z
-    .string()
-    .trim()
-    .min(1, 'ISRC is required')
-    .max(20, 'ISRC must be at most 20 characters')
-    .transform((v) => v.toUpperCase())
-    .optional(),
+  labelName: textField('Label name').optional(),
+  isrcCode: isrcField.optional(),
 });
 
 export const updateStatusSchema = z.object({

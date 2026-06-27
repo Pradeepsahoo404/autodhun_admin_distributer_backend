@@ -1,42 +1,19 @@
 import { z } from 'zod';
 import { OAC_STATUS } from './oac.model';
-
-const nameField = z
-  .string()
-  .trim()
-  .min(1, 'Artist channel name is required')
-  .max(200, 'Artist channel name must be at most 200 characters');
-
-const linkField = (label: string) =>
-  z
-    .string()
-    .trim()
-    .url(`Enter a valid ${label}`)
-    .max(500);
+import { isrcField, textField, urlField } from '@/validators/field.validator';
 
 export const createOacSchema = z.object({
-  artistChannelName: nameField,
-  artistChannelLink: linkField('artist channel link'),
-  artistChannelTopicLink: linkField('artist channel topic link'),
-  isrcCode: z
-    .string()
-    .trim()
-    .min(1, 'ISRC code is required')
-    .max(20, 'ISRC code must be at most 20 characters')
-    .transform((v) => v.toUpperCase()),
+  artistChannelName: textField('Artist channel name'),
+  artistChannelLink: urlField('Artist channel link'),
+  artistChannelTopicLink: urlField('Artist channel topic link'),
+  isrcCode: isrcField,
 });
 
 export const updateOacSchema = z.object({
-  artistChannelName: nameField.optional(),
-  artistChannelLink: linkField('artist channel link').optional(),
-  artistChannelTopicLink: linkField('artist channel topic link').optional(),
-  isrcCode: z
-    .string()
-    .trim()
-    .min(1, 'ISRC code is required')
-    .max(20, 'ISRC code must be at most 20 characters')
-    .transform((v) => v.toUpperCase())
-    .optional(),
+  artistChannelName: textField('Artist channel name').optional(),
+  artistChannelLink: urlField('Artist channel link').optional(),
+  artistChannelTopicLink: urlField('Artist channel topic link').optional(),
+  isrcCode: isrcField.optional(),
 });
 
 export const updateStatusSchema = z.object({
