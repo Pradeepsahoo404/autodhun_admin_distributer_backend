@@ -1,4 +1,5 @@
 import { ROLES, USER_STATUS } from '@/constants';
+import { env } from '@/config/env';
 import { roleRepository } from '@/modules/role/role.repository';
 import { UserModel } from '@/modules/user/user.model';
 import { IMusicRelease } from '@/modules/music-release/music-release.model';
@@ -8,6 +9,7 @@ import {
 } from '@/modules/music-release/music-release.constants';
 import { NOTIFICATION_TYPE } from './notification.model';
 import { notificationRepository } from './notification.repository';
+import { buildReleaseStatusUpdateEmail, sendMail } from '@/utils/email';
 import { logger } from '@/config/logger';
 
 interface Actor {
@@ -44,12 +46,18 @@ const ADMIN_STATUS_MODULES: Record<
   },
 };
 
-function resolveOwnerId(createdBy: unknown): string | null {
-  if (!createdBy) return null;
-  if (typeof createdBy === 'object' && createdBy !== null && '_id' in createdBy) {
-    return String((createdBy as { _id: { toString(): string } })._id);
-  }
-  return String(createdBy);
+function resolveOwner(createdBy: unknown): { id: string; name: string; email: string } | null {
+  if (!createdBy || typeof createdBy !== 'object' || !('_id' in createdBy)) return null;
+
+  const owner = createdBy as { _id: { toString(): string }; name?: string; email?: string };
+  const email = owner.email?.trim();
+  if (!email) return null;
+
+  return {
+    id: owner._id.toString(),
+    name: owner.name?.trim() || 'Admin',
+    email,
+  };
 }
 
 function formatStatusLabel(status: string): string {
@@ -95,6 +103,42 @@ class ReleaseNotificationsService {
     const config = ADMIN_STATUS_MODULES[status];
     if (!config) return null;
     return `${config.route}?entry=${releaseId}`;
+  }
+
+  private buildCreatorDashboardUrl(status: MusicReleaseStatus, releaseId: string): string {
+    const base = env.CLIENT_URL.replace(/\/$/, '');
+
+    if (status === MUSIC_RELEASE_STATUS.CORRECTION) {
+      return `${base}/dashboard/release/correction?entry=${releaseId}`;
+    }
+
+    if (status === MUSIC_RELEASE_STATUS.QC_APPROVAL || status === MUSIC_RELEASE_STATUS.LIVE) {
+      return `${base}/dashboard/assets/overview?entry=${releaseId}`;
+    }
+
+    return `${base}/dashboard`;
+  }
+
+  private async sendReleaseStatusEmail(
+    release: IMusicRelease,
+    newStatus: MusicReleaseStatus,
+    owner: { name: string; email: string },
+  ): Promise<void> {
+    const statusLabel = formatStatusLabel(newStatus);
+    const isrc = release.tracks?.[0]?.isrc?.trim();
+
+    const { subject, html, text } = buildReleaseStatusUpdateEmail({
+      recipientName: owner.name,
+      releaseTitle: release.title,
+      artist: release.artist,
+      label: release.label,
+      statusKey: newStatus,
+      statusLabel,
+      dashboardUrl: this.buildCreatorDashboardUrl(newStatus, release._id.toString()),
+      isrc: isrc || undefined,
+    });
+
+    await sendMail({ to: owner.email, subject, html, text });
   }
 
   async notifyReleaseCreated(release: IMusicRelease, actor: Actor): Promise<void> {
@@ -171,6 +215,22 @@ class ReleaseNotificationsService {
   ): Promise<void> {
     if (!actor.isSuperAdmin) return;
 
+    const owner = resolveOwner(release.createdBy);
+    if (!owner || owner.id === actor.id) return;
+
+    const statusLabel = formatStatusLabel(newStatus);
+    const releaseId = release._id.toString();
+
+    try {
+      await this.sendReleaseStatusEmail(release, newStatus, owner);
+    } catch (error) {
+      logger.error('Failed to email creator of release status update', {
+        releaseId,
+        newStatus,
+        error,
+      });
+    }
+
     const notifyStatuses: MusicReleaseStatus[] = [
       MUSIC_RELEASE_STATUS.CORRECTION,
       MUSIC_RELEASE_STATUS.QC_APPROVAL,
@@ -179,20 +239,14 @@ class ReleaseNotificationsService {
     if (!notifyStatuses.includes(newStatus)) return;
 
     try {
-      const ownerId = resolveOwnerId(release.createdBy);
-      if (!ownerId || ownerId === actor.id) return;
-
       const moduleConfig = ADMIN_STATUS_MODULES[newStatus];
       if (!moduleConfig) return;
 
-      const releaseId = release._id.toString();
       const route = this.buildAdminRoute(newStatus, releaseId);
       if (!route) return;
 
-      const statusLabel = formatStatusLabel(newStatus);
-
       await notificationRepository.create({
-        recipient: ownerId as never,
+        recipient: owner.id as never,
         type: NOTIFICATION_TYPE.RELEASE_STATUS_UPDATED,
         moduleSlug: moduleConfig.slug,
         moduleName: moduleConfig.name,
