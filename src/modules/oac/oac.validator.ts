@@ -1,18 +1,18 @@
 import { z } from 'zod';
 import { OAC_STATUS } from './oac.model';
-import { isrcField, textField, urlField } from '@/validators/field.validator';
+import { isrcField, textField, youtubeUrlField } from '@/validators/field.validator';
 
 export const createOacSchema = z.object({
   artistChannelName: textField('Artist channel name'),
-  artistChannelLink: urlField('Artist channel link'),
-  artistChannelTopicLink: urlField('Artist channel topic link'),
+  artistChannelLink: youtubeUrlField('Artist channel link'),
+  artistChannelTopicLink: youtubeUrlField('Artist channel topic link'),
   isrcCode: isrcField,
 });
 
 export const updateOacSchema = z.object({
   artistChannelName: textField('Artist channel name').optional(),
-  artistChannelLink: urlField('Artist channel link').optional(),
-  artistChannelTopicLink: urlField('Artist channel topic link').optional(),
+  artistChannelLink: youtubeUrlField('Artist channel link').optional(),
+  artistChannelTopicLink: youtubeUrlField('Artist channel topic link').optional(),
   isrcCode: isrcField.optional(),
 });
 

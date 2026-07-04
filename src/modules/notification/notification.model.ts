@@ -5,6 +5,9 @@ export const NOTIFICATION_TYPE = {
   RIGHTS_STATUS_UPDATED: 'rights_status_updated',
   ISSUES_ENTRY_ASSIGNED: 'issues_entry_assigned',
   ISSUES_OWNERSHIP_UPDATED: 'issues_ownership_updated',
+  RELEASE_CREATED: 'release_created',
+  RELEASE_UPDATED: 'release_updated',
+  RELEASE_STATUS_UPDATED: 'release_status_updated',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICATION_TYPE];

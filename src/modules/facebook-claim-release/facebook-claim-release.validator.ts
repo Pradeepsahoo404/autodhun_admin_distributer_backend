@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { CLAIM_RELEASE_STATUS } from './facebook-claim-release.model';
 import {
+  catalogLabelField,
   facebookPageLinkField,
   isrcField,
-  textField,
 } from '@/validators/field.validator';
 
 export const LABEL_NAMES_MUST_MATCH_MESSAGE =
@@ -28,8 +28,8 @@ function assertMatchingLabels(sender: string, receiver: string, ctx: z.Refinemen
 
 export const createFacebookClaimReleaseSchema = z
   .object({
-    senderLabelName: textField('Sender label name'),
-    receiverLabelName: textField('Receiver label name'),
+    senderLabelName: catalogLabelField('Sender label name'),
+    receiverLabelName: catalogLabelField('Receiver label name'),
     facebookPageLink: facebookPageLinkField,
     isrcCode: isrcField,
   })
@@ -39,8 +39,8 @@ export const createFacebookClaimReleaseSchema = z
 
 export const updateFacebookClaimReleaseSchema = z
   .object({
-    senderLabelName: textField('Sender label name').optional(),
-    receiverLabelName: textField('Receiver label name').optional(),
+    senderLabelName: catalogLabelField('Sender label name').optional(),
+    receiverLabelName: catalogLabelField('Receiver label name').optional(),
     facebookPageLink: facebookPageLinkField.optional(),
     isrcCode: isrcField.optional(),
   })

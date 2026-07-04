@@ -1,15 +1,15 @@
 import { z } from 'zod';
 import { ALLOWLIST_STATUS } from './allowlist.model';
-import { textField, urlField } from '@/validators/field.validator';
+import { catalogLabelField, youtubeUrlField } from '@/validators/field.validator';
 
 export const createAllowlistSchema = z.object({
-  labelName: textField('Label name'),
-  channelLink: urlField('Channel link'),
+  labelName: catalogLabelField('Label name'),
+  channelLink: youtubeUrlField('Channel link'),
 });
 
 export const updateAllowlistSchema = z.object({
-  labelName: textField('Label name').optional(),
-  channelLink: urlField('Channel link').optional(),
+  labelName: catalogLabelField('Label name').optional(),
+  channelLink: youtubeUrlField('Channel link').optional(),
 });
 
 export const updateStatusSchema = z.object({

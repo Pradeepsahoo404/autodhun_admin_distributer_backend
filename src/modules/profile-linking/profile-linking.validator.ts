@@ -1,21 +1,21 @@
 import { z } from 'zod';
 import { PROFILE_LINKING_STATUS } from './profile-linking.model';
 import {
+  catalogLabelField,
   facebookPageLinkField,
   instagramHandleField,
   isrcField,
-  textField,
 } from '@/validators/field.validator';
 
 export const createProfileLinkingSchema = z.object({
-  labelName: textField('Label name'),
+  labelName: catalogLabelField('Label name'),
   isrcCode: isrcField,
   facebookPageLink: facebookPageLinkField,
   instagramHandleName: instagramHandleField,
 });
 
 export const updateProfileLinkingSchema = z.object({
-  labelName: textField('Label name').optional(),
+  labelName: catalogLabelField('Label name').optional(),
   isrcCode: isrcField.optional(),
   facebookPageLink: facebookPageLinkField.optional(),
   instagramHandleName: instagramHandleField.optional(),

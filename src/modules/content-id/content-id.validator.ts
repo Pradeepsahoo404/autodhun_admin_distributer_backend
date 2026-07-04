@@ -1,14 +1,14 @@
 import { z } from 'zod';
 import { CONTENT_ID_STATUS } from './content-id.model';
-import { isrcField, textField } from '@/validators/field.validator';
+import { isrcField, catalogLabelField } from '@/validators/field.validator';
 
 export const createContentIdSchema = z.object({
-  labelName: textField('Label name'),
+  labelName: catalogLabelField('Label name'),
   isrcCode: isrcField,
 });
 
 export const updateContentIdSchema = z.object({
-  labelName: textField('Label name').optional(),
+  labelName: catalogLabelField('Label name').optional(),
   isrcCode: isrcField.optional(),
 });
 

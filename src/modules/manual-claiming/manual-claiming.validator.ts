@@ -1,16 +1,16 @@
 import { z } from 'zod';
 import { MANUAL_CLAIMING_STATUS } from './manual-claiming.model';
-import { isrcField, textField, urlField } from '@/validators/field.validator';
+import { isrcField, catalogLabelField, urlField } from '@/validators/field.validator';
 
 export const createManualClaimingSchema = z.object({
-  labelName: textField('Label name'),
+  labelName: catalogLabelField('Label name'),
   originalSongLink: urlField('Original song link'),
   isrcCode: isrcField,
   songLink: urlField('Song link'),
 });
 
 export const updateManualClaimingSchema = z.object({
-  labelName: textField('Label name').optional(),
+  labelName: catalogLabelField('Label name').optional(),
   originalSongLink: urlField('Original song link').optional(),
   isrcCode: isrcField.optional(),
   songLink: urlField('Song link').optional(),

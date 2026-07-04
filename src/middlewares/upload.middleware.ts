@@ -34,3 +34,61 @@ export const uploadAvatar: RequestHandler = (req, res, next) => {
     next();
   });
 };
+
+const MAX_COVER_BYTES = 10 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
+const MAX_AUDIO_FILES = 30;
+
+const releaseUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_AUDIO_BYTES,
+    files: MAX_AUDIO_FILES + 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (file.fieldname === 'coverArt') {
+      if (!file.mimetype.startsWith('image/')) {
+        cb(new Error('Cover art must be an image'));
+        return;
+      }
+      return cb(null, true);
+    }
+    if (file.fieldname === 'audioFiles') {
+      if (!file.mimetype.startsWith('audio/')) {
+        cb(new Error('Audio files must be audio format'));
+        return;
+      }
+      return cb(null, true);
+    }
+    cb(new Error('Unexpected upload field'));
+  },
+});
+
+/** Parses cover art + audio files for music release submission. */
+export const uploadMusicRelease: RequestHandler = (req, res, next) => {
+  releaseUpload.fields([
+    { name: 'coverArt', maxCount: 1 },
+    { name: 'audioFiles', maxCount: MAX_AUDIO_FILES },
+  ])(req, res, (error) => {
+    if (error instanceof MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        next(ApiError.badRequest('File exceeds maximum allowed size'));
+        return;
+      }
+      next(ApiError.badRequest(error.message));
+      return;
+    }
+    if (error) {
+      next(ApiError.badRequest(error.message));
+      return;
+    }
+
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const cover = files?.coverArt?.[0];
+    if (cover && cover.size > MAX_COVER_BYTES) {
+      next(ApiError.badRequest('Cover art must be under 10MB'));
+      return;
+    }
+    next();
+  });
+};

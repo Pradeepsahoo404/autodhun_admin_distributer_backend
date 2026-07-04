@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CLAIM_RELEASE_STATUS } from './youtube-claim-release.model';
-import { isrcField, textField, urlField } from '@/validators/field.validator';
+import { isrcField, catalogLabelField, youtubeUrlField } from '@/validators/field.validator';
 
 export const LABEL_NAMES_MUST_MATCH_MESSAGE =
   'Sender and receiver label names must always be the same';
@@ -24,9 +24,9 @@ function assertMatchingLabels(sender: string, receiver: string, ctx: z.Refinemen
 
 export const createYoutubeClaimReleaseSchema = z
   .object({
-    senderLabelName: textField('Sender label name'),
-    receiverLabelName: textField('Receiver label name'),
-    youtubeLink: urlField('YouTube link'),
+    senderLabelName: catalogLabelField('Sender label name'),
+    receiverLabelName: catalogLabelField('Receiver label name'),
+    youtubeLink: youtubeUrlField('YouTube link'),
     isrcCode: isrcField,
   })
   .superRefine((data, ctx) => {
@@ -35,9 +35,9 @@ export const createYoutubeClaimReleaseSchema = z
 
 export const updateYoutubeClaimReleaseSchema = z
   .object({
-    senderLabelName: textField('Sender label name').optional(),
-    receiverLabelName: textField('Receiver label name').optional(),
-    youtubeLink: urlField('YouTube link').optional(),
+    senderLabelName: catalogLabelField('Sender label name').optional(),
+    receiverLabelName: catalogLabelField('Receiver label name').optional(),
+    youtubeLink: youtubeUrlField('YouTube link').optional(),
     isrcCode: isrcField.optional(),
   })
   .superRefine((data, ctx) => {

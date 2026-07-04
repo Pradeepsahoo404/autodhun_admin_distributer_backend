@@ -28,6 +28,7 @@ export const authenticate: RequestHandler = asyncHandler(async (req, _res, next)
   req.user = {
     id: user._id.toString(),
     email: user.email,
+    name: user.name,
     roleId: role._id.toString(),
     role: role.slug,
     isSuperAdmin: role.slug === ROLES.SUPER_ADMIN,

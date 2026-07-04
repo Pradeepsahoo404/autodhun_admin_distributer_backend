@@ -99,3 +99,22 @@ export const optionalRoleDescriptionField = z
   .refine((value) => value === '' || ROLE_DESCRIPTION_PATTERN.test(value), ROLE_DESCRIPTION_MESSAGE)
   .optional()
   .or(z.literal(''));
+
+export const catalogLabelField = (label: string, max = 200) =>
+  z
+    .string()
+    .trim()
+    .min(1, `${label} is required`)
+    .max(max, `${label} must be at most ${max} characters`);
+
+export const isYoutubeUrl = (url: string): boolean => {
+  try {
+    const { hostname } = new URL(url);
+    return /(?:^|\.)youtube\.com$/i.test(hostname) || /^youtu\.be$/i.test(hostname);
+  } catch {
+    return false;
+  }
+};
+
+export const youtubeUrlField = (label: string, max = 500) =>
+  urlField(label, max).refine(isYoutubeUrl, 'Enter a valid YouTube link');

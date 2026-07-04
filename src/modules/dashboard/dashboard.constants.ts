@@ -32,7 +32,6 @@ export const DASHBOARD_CARDS: DashboardCardDef[] = [
     description: "When you've got the beats right, there's no fun in keeping the world waiting.",
     variant: 'feature',
     cta: { label: 'Create Release', action: 'create', moduleSlug: 'create-new-release' },
-    secondaryCta: { label: 'Watch Demo' },
     module: 'create-new-release',
     requiredAction: 'view',
   },

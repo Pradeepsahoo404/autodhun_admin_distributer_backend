@@ -7,6 +7,7 @@ import type { JwtPayload } from '@/utils/jwt';
 export interface AuthUser {
   id: string;
   email: string;
+  name: string;
   roleId: string;
   role: string;
   isSuperAdmin: boolean;

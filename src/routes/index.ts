@@ -17,6 +17,8 @@ import { referenceOverlapsRoutes } from '@/modules/reference-overlaps/reference-
 import { registeredIssuesModules } from '@/modules/issues-shared/issues-module.registry';
 import { notificationRoutes } from '@/modules/notification/notification.routes';
 import { cronjobSettingsRoutes } from '@/modules/cronjob-settings/cronjob-settings.routes';
+import { musicReleaseRoutes } from '@/modules/music-release/music-release.routes';
+import { releaseCatalogRoutes } from '@/modules/release-catalog/release-catalog.routes';
 
 const router = Router();
 
@@ -44,5 +46,7 @@ for (const mod of registeredIssuesModules) {
 }
 router.use('/notifications', notificationRoutes);
 router.use('/cronjob-settings', cronjobSettingsRoutes);
+router.use('/music-releases', musicReleaseRoutes);
+router.use('/release-catalog', releaseCatalogRoutes);
 
 export const apiRouter = router;

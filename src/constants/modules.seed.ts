@@ -182,4 +182,4 @@ export const ADMIN_DEFAULT_MODULE_SLUGS = [
 ] as const;
 
 /** Root modules where Admin also gets create / update / delete by default. */
-export const ADMIN_DEFAULT_CRUD_MODULE_SLUGS = ['legal'] as const;
+export const ADMIN_DEFAULT_CRUD_MODULE_SLUGS = ['legal', 'release'] as const;

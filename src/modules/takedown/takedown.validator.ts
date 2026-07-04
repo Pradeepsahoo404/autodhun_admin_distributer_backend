@@ -1,15 +1,15 @@
 import { z } from 'zod';
 import { TAKEDOWN_STATUS } from './takedown.model';
-import { isrcField, textField, urlField } from '@/validators/field.validator';
+import { isrcField, catalogLabelField, urlField } from '@/validators/field.validator';
 
 export const createTakedownSchema = z.object({
-  labelName: textField('Label name'),
+  labelName: catalogLabelField('Label name'),
   isrcCode: isrcField,
   songLink: urlField('Song link'),
 });
 
 export const updateTakedownSchema = z.object({
-  labelName: textField('Label name').optional(),
+  labelName: catalogLabelField('Label name').optional(),
   isrcCode: isrcField.optional(),
   songLink: urlField('Song link').optional(),
 });
