@@ -12,6 +12,7 @@ import {
 } from './youtube-claim-release.validator';
 import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
+import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
 interface Actor {
   id: string;
@@ -65,6 +66,7 @@ class YoutubeClaimReleaseService {
 
   async create(dto: CreateYoutubeClaimReleaseDto, actor: Actor): Promise<IYoutubeClaimRelease> {
     assertLabelsMatch(dto.senderLabelName, dto.receiverLabelName);
+    await assertLabelsAccessible(actor, dto.senderLabelName, dto.receiverLabelName);
 
     const created = await youtubeClaimReleaseRepository.create({
       ...dto,
@@ -90,6 +92,7 @@ class YoutubeClaimReleaseService {
     const sender = dto.senderLabelName ?? item.senderLabelName;
     const receiver = dto.receiverLabelName ?? item.receiverLabelName;
     assertLabelsMatch(sender, receiver);
+    await assertLabelsAccessible(actor, sender, receiver);
 
     const updated = await youtubeClaimReleaseRepository.updateById(id, {
       ...dto,

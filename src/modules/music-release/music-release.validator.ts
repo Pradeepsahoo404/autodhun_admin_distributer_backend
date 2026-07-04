@@ -19,6 +19,7 @@ import {
 } from '@/utils/releaseDateTime';
 import {
   MUSIC_RELEASE_LIST_CONTEXT,
+  MUSIC_RELEASE_STATUS,
   MUSIC_RELEASE_STATUS_VALUES,
 } from './music-release.constants';
 
@@ -172,14 +173,36 @@ function applyReleaseDateRules(data: z.infer<typeof releaseBodyBase>, ctx: z.Ref
 
 export const createMusicReleaseBodySchema = releaseBodyBase.superRefine(applyReleaseDateRules);
 
-export const updateStatusSchema = z.object({
-  status: z.enum(MUSIC_RELEASE_STATUS_VALUES as [string, ...string[]]),
-});
+export const updateStatusSchema = z
+  .object({
+    status: z.enum(MUSIC_RELEASE_STATUS_VALUES as [string, ...string[]]),
+    correctionReasons: z.array(z.string().trim().min(1, 'Reason cannot be empty')).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status === MUSIC_RELEASE_STATUS.CORRECTION && !data.correctionReasons?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'At least one correction reason is required',
+        path: ['correctionReasons'],
+      });
+    }
+  });
 
-export const bulkUpdateStatusSchema = z.object({
-  ids: z.array(z.string().min(1)).min(1, 'Select at least one release'),
-  status: z.enum(MUSIC_RELEASE_STATUS_VALUES as [string, ...string[]]),
-});
+export const bulkUpdateStatusSchema = z
+  .object({
+    ids: z.array(z.string().min(1)).min(1, 'Select at least one release'),
+    status: z.enum(MUSIC_RELEASE_STATUS_VALUES as [string, ...string[]]),
+    correctionReasons: z.array(z.string().trim().min(1, 'Reason cannot be empty')).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status === MUSIC_RELEASE_STATUS.CORRECTION && !data.correctionReasons?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'At least one correction reason is required',
+        path: ['correctionReasons'],
+      });
+    }
+  });
 
 export const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

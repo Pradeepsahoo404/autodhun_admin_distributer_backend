@@ -3,39 +3,71 @@ import { releaseCatalogController } from './release-catalog.controller';
 import { authenticate } from '@/middlewares/auth.middleware';
 import { checkPermission } from '@/middlewares/rbac.middleware';
 import { validate } from '@/middlewares/validate.middleware';
-import { catalogListQuerySchema, createCatalogNameSchema } from './release-catalog.validator';
+import { idParamSchema } from '@/validators/common.validator';
+import {
+  catalogListQuerySchema,
+  createCatalogNameSchema,
+  labelManageQuerySchema,
+  updateLabelSchema,
+  updateLabelStatusSchema,
+} from './release-catalog.validator';
 
-const MODULE = 'release';
+const RELEASE_MODULE = 'release';
 const router = Router();
 
 router.use(authenticate);
 
 router.get(
   '/artists',
-  checkPermission(MODULE, 'view'),
+  checkPermission(RELEASE_MODULE, 'view'),
   validate({ query: catalogListQuerySchema }),
   releaseCatalogController.listArtists,
 );
 
 router.post(
   '/artists',
-  checkPermission(MODULE, 'create'),
+  checkPermission(RELEASE_MODULE, 'create'),
   validate({ body: createCatalogNameSchema }),
   releaseCatalogController.createArtist,
 );
 
 router.get(
   '/labels',
-  checkPermission(MODULE, 'view'),
+  checkPermission(RELEASE_MODULE, 'view'),
   validate({ query: catalogListQuerySchema }),
   releaseCatalogController.listLabels,
 );
 
+router.get(
+  '/labels/manage',
+  checkPermission(RELEASE_MODULE, 'view'),
+  validate({ query: labelManageQuerySchema }),
+  releaseCatalogController.listLabelsManage,
+);
+
 router.post(
   '/labels',
-  checkPermission(MODULE, 'create'),
+  checkPermission(RELEASE_MODULE, 'create'),
   validate({ body: createCatalogNameSchema }),
   releaseCatalogController.createLabel,
+);
+
+router.put(
+  '/labels/:id',
+  validate({ params: idParamSchema, body: updateLabelSchema }),
+  releaseCatalogController.updateLabel,
+);
+
+router.patch(
+  '/labels/:id/status',
+  validate({ params: idParamSchema, body: updateLabelStatusSchema }),
+  releaseCatalogController.updateLabelStatus,
+);
+
+router.delete(
+  '/labels/:id',
+  validate({ params: idParamSchema }),
+  releaseCatalogController.deleteLabel,
 );
 
 export const releaseCatalogRoutes = router;

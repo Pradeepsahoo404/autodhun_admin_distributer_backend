@@ -11,6 +11,7 @@ import {
 } from './takedown.validator';
 import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
+import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
 interface Actor {
   id: string;
@@ -57,6 +58,8 @@ class TakedownService {
   }
 
   async create(dto: CreateTakedownDto, actor: Actor): Promise<ITakedown> {
+    await assertLabelsAccessible(actor, dto.labelName);
+
     const created = await takedownRepository.create({
       ...dto,
       status: TAKEDOWN_STATUS.IN_PROGRESS,
@@ -73,6 +76,8 @@ class TakedownService {
     const item = await takedownRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Takedown entry not found');
     assertOwnership(item, actor);
+
+    await assertLabelsAccessible(actor, dto.labelName);
 
     const updated = await takedownRepository.updateById(id, {
       ...dto,

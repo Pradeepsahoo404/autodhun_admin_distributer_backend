@@ -11,6 +11,7 @@ import {
 } from './manual-claiming.validator';
 import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
+import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
 interface Actor {
   id: string;
@@ -57,6 +58,8 @@ class ManualClaimingService {
   }
 
   async create(dto: CreateManualClaimingDto, actor: Actor): Promise<IManualClaiming> {
+    await assertLabelsAccessible(actor, dto.labelName);
+
     const created = await manualClaimingRepository.create({
       ...dto,
       status: MANUAL_CLAIMING_STATUS.IN_PROGRESS,
@@ -77,6 +80,8 @@ class ManualClaimingService {
     const item = await manualClaimingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Manual claiming entry not found');
     assertOwnership(item, actor);
+
+    await assertLabelsAccessible(actor, dto.labelName);
 
     const updated = await manualClaimingRepository.updateById(id, {
       ...dto,

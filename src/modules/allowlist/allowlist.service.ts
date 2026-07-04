@@ -11,6 +11,7 @@ import {
 } from './allowlist.validator';
 import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
+import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
 interface Actor {
   id: string;
@@ -57,6 +58,8 @@ class AllowlistService {
   }
 
   async create(dto: CreateAllowlistDto, actor: Actor): Promise<IAllowlist> {
+    await assertLabelsAccessible(actor, dto.labelName);
+
     const created = await allowlistRepository.create({
       ...dto,
       status: ALLOWLIST_STATUS.IN_PROGRESS,
@@ -73,6 +76,8 @@ class AllowlistService {
     const item = await allowlistRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Allowlist entry not found');
     assertOwnership(item, actor);
+
+    await assertLabelsAccessible(actor, dto.labelName);
 
     const updated = await allowlistRepository.updateById(id, {
       ...dto,

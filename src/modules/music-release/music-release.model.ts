@@ -54,6 +54,7 @@ export interface IMusicRelease extends Document {
     | 'only-youtube'
     | 'only-meta-audio';
   status: MusicReleaseStatus;
+  correctionReasons?: string[];
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -131,6 +132,7 @@ const musicReleaseSchema = new Schema<IMusicRelease>(
       default: MUSIC_RELEASE_STATUS.IN_REVIEW,
       index: true,
     },
+    correctionReasons: { type: [String], default: [] },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

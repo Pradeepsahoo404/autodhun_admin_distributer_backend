@@ -24,6 +24,7 @@ import { uploadReleaseAudio, uploadReleaseCover } from '@/utils/releaseUpload';
 import { env } from '@/config/env';
 import { releaseNotificationsService } from '@/modules/notification/release-notifications.service';
 import { previewNextReleaseIsrc, resolveTracksIsrc } from '@/utils/releaseIsrc';
+import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
 interface Actor {
   id: string;
@@ -81,7 +82,11 @@ function assertOwnership(item: IMusicRelease, actor: Actor): void {
   }
 }
 
-async function assertModuleAccess(actor: Actor, moduleSlug: string, action: 'view' | 'create' | 'update'): Promise<void> {
+async function assertModuleAccess(
+  actor: Actor,
+  moduleSlug: string,
+  action: 'view' | 'create' | 'update' | 'delete',
+): Promise<void> {
   if (actor.isSuperAdmin) return;
   const allowed = await permissionService.can(actor.roleId, actor.roleSlug, moduleSlug, action);
   if (!allowed) {
@@ -146,6 +151,8 @@ class MusicReleaseService {
       throw ApiError.badRequest('At least one audio file is required');
     }
 
+    await assertLabelsAccessible(actor, dto.label);
+
     const releaseKey = new Types.ObjectId().toString();
     const coverArtUrl = await uploadReleaseCover(files.coverArt.buffer, releaseKey);
 
@@ -188,6 +195,8 @@ class MusicReleaseService {
     if (!item) throw ApiError.notFound('Release not found');
 
     assertOwnership(item, actor);
+
+    await assertLabelsAccessible(actor, dto.label);
 
     const editableStatuses = [MUSIC_RELEASE_STATUS.IN_REVIEW, MUSIC_RELEASE_STATUS.CORRECTION];
     if (!editableStatuses.includes(item.status as typeof editableStatuses[number])) {
@@ -248,6 +257,8 @@ class MusicReleaseService {
 
     await musicReleaseRepository.updateById(id, {
       status: dto.status,
+      correctionReasons:
+        dto.status === MUSIC_RELEASE_STATUS.CORRECTION ? dto.correctionReasons ?? [] : [],
       updatedBy: actor.id as never,
     });
 
@@ -274,6 +285,7 @@ class MusicReleaseService {
       dto.ids,
       dto.status,
       actor.id,
+      dto.status === MUSIC_RELEASE_STATUS.CORRECTION ? dto.correctionReasons ?? [] : [],
     );
 
     await Promise.all(
@@ -282,11 +294,29 @@ class MusicReleaseService {
           release,
           dto.status as MusicReleaseStatus,
           actor,
+          dto.status === MUSIC_RELEASE_STATUS.CORRECTION
+            ? { correctionReasons: dto.correctionReasons ?? [] }
+            : undefined,
         ),
       ),
     );
 
     return { updated };
+  }
+
+  async delete(id: string, actor: Actor): Promise<void> {
+    await assertModuleAccess(actor, 'release-correction', 'delete');
+
+    const item = await musicReleaseRepository.findById(id);
+    if (!item) throw ApiError.notFound('Release not found');
+
+    assertOwnership(item, actor);
+
+    if (item.status !== MUSIC_RELEASE_STATUS.CORRECTION) {
+      throw ApiError.forbidden('Only releases in correction can be deleted');
+    }
+
+    await musicReleaseRepository.deleteById(id);
   }
 
   async exportCsv(query: ExportMusicReleasesQueryDto, actor: Actor): Promise<string> {

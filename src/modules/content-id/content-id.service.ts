@@ -11,6 +11,7 @@ import {
 } from './content-id.validator';
 import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
+import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
 interface Actor {
   id: string;
@@ -57,6 +58,8 @@ class ContentIdService {
   }
 
   async create(dto: CreateContentIdDto, actor: Actor): Promise<IContentId> {
+    await assertLabelsAccessible(actor, dto.labelName);
+
     const created = await contentIdRepository.create({
       ...dto,
       status: CONTENT_ID_STATUS.IN_PROGRESS,
@@ -73,6 +76,8 @@ class ContentIdService {
     const item = await contentIdRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Content ID entry not found');
     assertOwnership(item, actor);
+
+    await assertLabelsAccessible(actor, dto.labelName);
 
     const updated = await contentIdRepository.updateById(id, {
       ...dto,

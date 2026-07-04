@@ -11,6 +11,7 @@ import {
 } from './profile-linking.validator';
 import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
+import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
 interface Actor {
   id: string;
@@ -57,6 +58,8 @@ class ProfileLinkingService {
   }
 
   async create(dto: CreateProfileLinkingDto, actor: Actor): Promise<IProfileLinking> {
+    await assertLabelsAccessible(actor, dto.labelName);
+
     const created = await profileLinkingRepository.create({
       ...dto,
       status: PROFILE_LINKING_STATUS.IN_PROGRESS,
@@ -77,6 +80,8 @@ class ProfileLinkingService {
     const item = await profileLinkingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Profile linking entry not found');
     assertOwnership(item, actor);
+
+    await assertLabelsAccessible(actor, dto.labelName);
 
     const updated = await profileLinkingRepository.updateById(id, {
       ...dto,

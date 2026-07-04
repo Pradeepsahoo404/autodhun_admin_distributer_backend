@@ -48,4 +48,6 @@ router.patch(
   musicReleaseController.updateStatus,
 );
 
+router.delete('/:id', validate({ params: idParamSchema }), musicReleaseController.delete);
+
 export const musicReleaseRoutes = router;

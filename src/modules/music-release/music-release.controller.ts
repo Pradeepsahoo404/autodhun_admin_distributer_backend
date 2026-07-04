@@ -123,6 +123,11 @@ class MusicReleaseController {
     sendSuccess(res, result, `${result.updated} release(s) updated`);
   });
 
+  delete = asyncHandler(async (req: Request, res: Response) => {
+    await musicReleaseService.delete(req.params.id, releaseActor(req));
+    sendSuccess(res, null, 'Release deleted');
+  });
+
   exportCsv = asyncHandler(async (req: Request, res: Response) => {
     const query = exportQuerySchema.parse(req.query);
     const csv = await musicReleaseService.exportCsv(query, releaseActor(req));

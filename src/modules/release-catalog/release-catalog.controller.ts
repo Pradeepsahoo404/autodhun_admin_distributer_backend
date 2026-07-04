@@ -2,7 +2,51 @@ import { Request, Response } from 'express';
 import { releaseCatalogService } from './release-catalog.service';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { sendSuccess } from '@/utils/ApiResponse';
-import { CatalogListQueryDto, CreateCatalogNameDto } from './release-catalog.validator';
+import { ApiError } from '@/utils/ApiError';
+import { permissionService } from '@/modules/permission/permission.service';
+import { LABEL_STATUS } from './release-catalog.constants';
+import {
+  CatalogListQueryDto,
+  CreateCatalogNameDto,
+  LabelManageQueryDto,
+  UpdateLabelDto,
+  UpdateLabelStatusDto,
+} from './release-catalog.validator';
+
+function catalogActor(req: Request) {
+  return { id: req.user!.id, isSuperAdmin: req.user!.isSuperAdmin };
+}
+
+async function assertManageAccess(req: Request, status: string): Promise<void> {
+  if (req.user!.isSuperAdmin) return;
+
+  const moduleSlug = status === LABEL_STATUS.INACTIVE ? 'label-block' : 'label-transfer';
+  const allowed = await permissionService.can(
+    req.user!.roleId,
+    req.user!.role,
+    moduleSlug,
+    'view',
+  );
+
+  if (!allowed) throw ApiError.forbidden(`No access to module: ${moduleSlug}`);
+}
+
+async function assertLabelMutationAccess(req: Request, action: 'update' | 'delete'): Promise<void> {
+  if (req.user!.isSuperAdmin) return;
+
+  const modules = ['label-transfer', 'label-block'] as const;
+  for (const moduleSlug of modules) {
+    const allowed = await permissionService.can(
+      req.user!.roleId,
+      req.user!.role,
+      moduleSlug,
+      action,
+    );
+    if (allowed) return;
+  }
+
+  throw ApiError.forbidden('No permission to manage labels');
+}
 
 class ReleaseCatalogController {
   listArtists = asyncHandler(async (req: Request, res: Response) => {
@@ -16,13 +60,49 @@ class ReleaseCatalogController {
   });
 
   listLabels = asyncHandler(async (req: Request, res: Response) => {
-    const items = await releaseCatalogService.listLabels(req.query as unknown as CatalogListQueryDto);
+    const items = await releaseCatalogService.listLabels(
+      req.query as unknown as CatalogListQueryDto,
+      catalogActor(req),
+    );
     sendSuccess(res, items, 'Labels fetched');
   });
 
   createLabel = asyncHandler(async (req: Request, res: Response) => {
     const item = await releaseCatalogService.createLabel(req.body as CreateCatalogNameDto, req.user!.id);
     sendSuccess(res, item, 'Label saved', 201);
+  });
+
+  listLabelsManage = asyncHandler(async (req: Request, res: Response) => {
+    const query = req.query as unknown as LabelManageQueryDto;
+    await assertManageAccess(req, query.status);
+    const result = await releaseCatalogService.listLabelsManage(query, catalogActor(req));
+    sendSuccess(res, result, 'Labels fetched');
+  });
+
+  updateLabel = asyncHandler(async (req: Request, res: Response) => {
+    await assertLabelMutationAccess(req, 'update');
+    const item = await releaseCatalogService.updateLabel(
+      req.params.id,
+      req.body as UpdateLabelDto,
+      catalogActor(req),
+    );
+    sendSuccess(res, item, 'Label updated');
+  });
+
+  deleteLabel = asyncHandler(async (req: Request, res: Response) => {
+    await assertLabelMutationAccess(req, 'delete');
+    await releaseCatalogService.deleteLabel(req.params.id, catalogActor(req));
+    sendSuccess(res, null, 'Label deleted');
+  });
+
+  updateLabelStatus = asyncHandler(async (req: Request, res: Response) => {
+    await assertLabelMutationAccess(req, 'update');
+    const item = await releaseCatalogService.updateLabelStatus(
+      req.params.id,
+      req.body as UpdateLabelStatusDto,
+      catalogActor(req),
+    );
+    sendSuccess(res, item, 'Label status updated');
   });
 }
 

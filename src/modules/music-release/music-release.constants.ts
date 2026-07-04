@@ -1,5 +1,6 @@
 export const MUSIC_RELEASE_STATUS = {
   IN_REVIEW: 'in_review',
+  TAKEDOWN: 'takedown',
   CORRECTION: 'correction',
   QC_APPROVAL: 'qc_approval',
   LIVE: 'live',
@@ -25,6 +26,7 @@ export const MUSIC_RELEASE_LIST_CONTEXT = {
 /** Shown in Content Delivery — active review pipeline only. */
 export const CONTENT_DELIVERY_STATUSES: MusicReleaseStatus[] = [
   MUSIC_RELEASE_STATUS.IN_REVIEW,
+  MUSIC_RELEASE_STATUS.TAKEDOWN,
   MUSIC_RELEASE_STATUS.CORRECTION,
 ];
 

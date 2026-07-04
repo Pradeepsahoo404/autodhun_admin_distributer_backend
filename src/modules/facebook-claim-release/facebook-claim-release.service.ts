@@ -12,6 +12,7 @@ import {
 } from './facebook-claim-release.validator';
 import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
+import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
 interface Actor {
   id: string;
@@ -65,6 +66,7 @@ class FacebookClaimReleaseService {
 
   async create(dto: CreateFacebookClaimReleaseDto, actor: Actor): Promise<IFacebookClaimRelease> {
     assertLabelsMatch(dto.senderLabelName, dto.receiverLabelName);
+    await assertLabelsAccessible(actor, dto.senderLabelName, dto.receiverLabelName);
 
     const created = await facebookClaimReleaseRepository.create({
       ...dto,
@@ -90,6 +92,7 @@ class FacebookClaimReleaseService {
     const sender = dto.senderLabelName ?? item.senderLabelName;
     const receiver = dto.receiverLabelName ?? item.receiverLabelName;
     assertLabelsMatch(sender, receiver);
+    await assertLabelsAccessible(actor, sender, receiver);
 
     const updated = await facebookClaimReleaseRepository.updateById(id, {
       ...dto,

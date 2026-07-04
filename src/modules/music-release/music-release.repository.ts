@@ -125,11 +125,20 @@ class MusicReleaseRepository extends BaseRepository<IMusicRelease> {
       .exec();
   }
 
-  async updateStatusByIds(ids: string[], status: string, updatedBy: string): Promise<number> {
-    const result = await MusicReleaseModel.updateMany(
-      { _id: { $in: ids } },
-      { status, updatedBy },
-    ).exec();
+  async updateStatusByIds(
+    ids: string[],
+    status: string,
+    updatedBy: string,
+    correctionReasons: string[] = [],
+  ): Promise<number> {
+    const update: Record<string, unknown> = { status, updatedBy };
+    if (status === MUSIC_RELEASE_STATUS.CORRECTION) {
+      update.correctionReasons = correctionReasons;
+    } else {
+      update.correctionReasons = [];
+    }
+
+    const result = await MusicReleaseModel.updateMany({ _id: { $in: ids } }, update).exec();
     return result.modifiedCount;
   }
 }

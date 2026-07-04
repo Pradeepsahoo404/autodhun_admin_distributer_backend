@@ -29,6 +29,11 @@ const ADMIN_STATUS_MODULES: Record<
   { slug: string; name: string; route: string } | null
 > = {
   [MUSIC_RELEASE_STATUS.IN_REVIEW]: null,
+  [MUSIC_RELEASE_STATUS.TAKEDOWN]: {
+    slug: 'assets',
+    name: 'Assets',
+    route: '/dashboard/assets',
+  },
   [MUSIC_RELEASE_STATUS.CORRECTION]: {
     slug: 'release-correction',
     name: 'Correction',
@@ -63,6 +68,7 @@ function resolveOwner(createdBy: unknown): { id: string; name: string; email: st
 function formatStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     in_review: 'In Review',
+    takedown: 'Takedown',
     correction: 'Correction',
     qc_approval: 'QC Approval',
     live: 'Live',
@@ -112,6 +118,10 @@ class ReleaseNotificationsService {
       return `${base}/dashboard/release/correction?entry=${releaseId}`;
     }
 
+    if (status === MUSIC_RELEASE_STATUS.TAKEDOWN) {
+      return `${base}/dashboard/assets?entry=${releaseId}`;
+    }
+
     if (status === MUSIC_RELEASE_STATUS.QC_APPROVAL || status === MUSIC_RELEASE_STATUS.LIVE) {
       return `${base}/dashboard/assets/overview?entry=${releaseId}`;
     }
@@ -123,9 +133,11 @@ class ReleaseNotificationsService {
     release: IMusicRelease,
     newStatus: MusicReleaseStatus,
     owner: { name: string; email: string },
+    correctionReasons?: string[],
   ): Promise<void> {
     const statusLabel = formatStatusLabel(newStatus);
     const isrc = release.tracks?.[0]?.isrc?.trim();
+    const reasons = correctionReasons ?? release.correctionReasons ?? [];
 
     const { subject, html, text } = buildReleaseStatusUpdateEmail({
       recipientName: owner.name,
@@ -136,6 +148,7 @@ class ReleaseNotificationsService {
       statusLabel,
       dashboardUrl: this.buildCreatorDashboardUrl(newStatus, release._id.toString()),
       isrc: isrc || undefined,
+      correctionReasons: reasons.length ? reasons : undefined,
     });
 
     await sendMail({ to: owner.email, subject, html, text });
@@ -212,6 +225,7 @@ class ReleaseNotificationsService {
     release: IMusicRelease,
     newStatus: MusicReleaseStatus,
     actor: Actor,
+    options?: { correctionReasons?: string[] },
   ): Promise<void> {
     if (!actor.isSuperAdmin) return;
 
@@ -220,9 +234,10 @@ class ReleaseNotificationsService {
 
     const statusLabel = formatStatusLabel(newStatus);
     const releaseId = release._id.toString();
+    const correctionReasons = options?.correctionReasons ?? release.correctionReasons;
 
     try {
-      await this.sendReleaseStatusEmail(release, newStatus, owner);
+      await this.sendReleaseStatusEmail(release, newStatus, owner, correctionReasons);
     } catch (error) {
       logger.error('Failed to email creator of release status update', {
         releaseId,
@@ -232,6 +247,7 @@ class ReleaseNotificationsService {
     }
 
     const notifyStatuses: MusicReleaseStatus[] = [
+      MUSIC_RELEASE_STATUS.TAKEDOWN,
       MUSIC_RELEASE_STATUS.CORRECTION,
       MUSIC_RELEASE_STATUS.QC_APPROVAL,
       MUSIC_RELEASE_STATUS.LIVE,
