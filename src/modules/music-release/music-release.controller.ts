@@ -13,6 +13,7 @@ import {
 } from './music-release.validator';
 import { resolveLocalReleaseFile } from '@/utils/releaseUpload';
 import { createMusicReleaseBodySchema, updateMusicReleaseBodySchema } from './music-release.validator';
+import { buildBulkTemplateWorkbook } from './music-release-bulk';
 
 function releaseActor(req: Request) {
   return {
@@ -108,6 +109,37 @@ class MusicReleaseController {
       releaseActor(req),
     );
     sendSuccess(res, item, 'Release submitted — status set to In Review', 201);
+  });
+
+  bulkImportTemplate = asyncHandler(async (_req: Request, res: Response) => {
+    const buffer = buildBulkTemplateWorkbook();
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', 'attachment; filename="bulk-release-template.xlsx"');
+    res.status(200).send(buffer);
+  });
+
+  bulkImport = asyncHandler(async (req: Request, res: Response) => {
+    const file = req.file as Express.Multer.File | undefined;
+    if (!file) {
+      throw ApiError.badRequest('Please upload a filled .xlsx or .csv file');
+    }
+
+    const result = await musicReleaseService.bulkImport(file.buffer, releaseActor(req));
+
+    if (result.created === 0 && result.errors.length > 0) {
+      sendSuccess(
+        res,
+        result,
+        `Import failed — ${result.errors.length} issue(s) found. No releases were created.`,
+        200,
+      );
+      return;
+    }
+
+    sendSuccess(res, result, `${result.created} release(s) imported — status set to In Review`, 201);
   });
 
   update = asyncHandler(async (req: Request, res: Response) => {

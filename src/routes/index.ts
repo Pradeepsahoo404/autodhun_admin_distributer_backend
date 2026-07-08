@@ -21,6 +21,8 @@ import { musicReleaseRoutes } from '@/modules/music-release/music-release.routes
 import { releaseCatalogRoutes } from '@/modules/release-catalog/release-catalog.routes';
 import { labelTransferRoutes } from '@/modules/label-transfer/label-transfer.routes';
 import { labelUpdateRoutes } from '@/modules/label-update/label-update.routes';
+import { channelRoutes } from '@/modules/channel/channel.routes';
+import { channelLinkingRoutes } from '@/modules/channel-linking/channel-linking.routes';
 
 const router = Router();
 
@@ -52,5 +54,7 @@ router.use('/music-releases', musicReleaseRoutes);
 router.use('/release-catalog', releaseCatalogRoutes);
 router.use('/label-transfers', labelTransferRoutes);
 router.use('/label-updates', labelUpdateRoutes);
+router.use('/channels', channelRoutes);
+router.use('/channel-linking', channelLinkingRoutes);
 
 export const apiRouter = router;

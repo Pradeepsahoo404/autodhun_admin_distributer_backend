@@ -177,9 +177,10 @@ export const ADMIN_DEFAULT_MODULE_SLUGS = [
   'reports',
   'channels',
   'legal',
+  'notifications',
   'settings',
   'help-support',
 ] as const;
 
 /** Root modules where Admin also gets create / update / delete by default. */
-export const ADMIN_DEFAULT_CRUD_MODULE_SLUGS = ['legal', 'release'] as const;
+export const ADMIN_DEFAULT_CRUD_MODULE_SLUGS = ['legal', 'release', 'channels'] as const;

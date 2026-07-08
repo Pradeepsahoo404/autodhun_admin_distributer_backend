@@ -1,7 +1,12 @@
 import { Types } from 'mongoose';
 import { musicReleaseRepository } from './music-release.repository';
 import { ApiError } from '@/utils/ApiError';
-import { IMusicRelease } from './music-release.model';
+import { IMusicRelease, MusicReleaseModel } from './music-release.model';
+import { ReleaseLabelModel } from '@/modules/release-catalog/release-label.model';
+import {
+  parseBulkReleaseWorkbook,
+  type BulkRowError,
+} from './music-release-bulk';
 import { PaginatedResult } from '@/types';
 import {
   ASSETS_OVERVIEW_STATUSES,
@@ -23,8 +28,15 @@ import { permissionService } from '@/modules/permission/permission.service';
 import { uploadReleaseAudio, uploadReleaseCover } from '@/utils/releaseUpload';
 import { env } from '@/config/env';
 import { releaseNotificationsService } from '@/modules/notification/release-notifications.service';
-import { previewNextReleaseIsrc, resolveTracksIsrc, assertOwnIsrcsAvailable, isReleaseIsrcTaken } from '@/utils/releaseIsrc';
-import { assertLabelsAccessible } from '@/utils/labelOwnership';
+import {
+  previewNextReleaseIsrc,
+  resolveTracksIsrc,
+  assertOwnIsrcsAvailable,
+  isReleaseIsrcTaken,
+  allocateReleaseIsrcCodes,
+  normalizeReleaseIsrc,
+} from '@/utils/releaseIsrc';
+import { assertLabelsAccessible, ensureLabelOwnershipBackfill } from '@/utils/labelOwnership';
 
 interface Actor {
   id: string;
@@ -39,6 +51,13 @@ interface UploadedFiles {
   audioFiles: Express.Multer.File[];
 }
 
+export interface BulkImportResult {
+  totalRows: number;
+  created: number;
+  failed: number;
+  errors: BulkRowError[];
+}
+
 interface PopulatedUser {
   name?: string;
   email?: string;
@@ -49,6 +68,43 @@ function escapeCsv(value: string): string {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Rejects a release whose Title+Artist+Label or UPC already exists. */
+async function assertReleaseNotDuplicate(
+  data: { title: string; artist: string; label: string; upc?: string },
+  excludeReleaseId?: string,
+): Promise<void> {
+  const title = data.title.trim();
+  const artist = data.artist.trim();
+  const label = data.label.trim();
+  const upc = data.upc?.trim() ?? '';
+
+  const orConditions: Record<string, unknown>[] = [
+    {
+      title: new RegExp(`^${escapeRegex(title)}$`, 'i'),
+      artist: new RegExp(`^${escapeRegex(artist)}$`, 'i'),
+      label: new RegExp(`^${escapeRegex(label)}$`, 'i'),
+    },
+  ];
+  if (upc) orConditions.push({ upc });
+
+  const filter: Record<string, unknown> = { $or: orConditions };
+  if (excludeReleaseId && Types.ObjectId.isValid(excludeReleaseId)) {
+    filter._id = { $ne: new Types.ObjectId(excludeReleaseId) };
+  }
+
+  const existing = await MusicReleaseModel.findOne(filter, { title: 1, upc: 1 }).lean();
+  if (!existing) return;
+
+  if (upc && (existing.upc ?? '').trim() === upc) {
+    throw ApiError.conflict(`UPC "${upc}" is already used by an existing release`);
+  }
+  throw ApiError.conflict('A release with this title, artist and label already exists');
 }
 
 function formatDateTime(date: Date): string {
@@ -163,6 +219,8 @@ class MusicReleaseService {
 
     await assertLabelsAccessible(actor, dto.label);
 
+    await assertReleaseNotDuplicate(dto);
+
     await assertOwnIsrcsAvailable(dto.tracks);
 
     const releaseKey = new Types.ObjectId().toString();
@@ -195,6 +253,210 @@ class MusicReleaseService {
     return release;
   }
 
+  async bulkImport(fileBuffer: Buffer, actor: Actor): Promise<BulkImportResult> {
+    await assertModuleAccess(actor, 'release', 'create');
+
+    const { releases, errors, totalRows } = parseBulkReleaseWorkbook(fileBuffer);
+
+    if (totalRows === 0) {
+      throw ApiError.badRequest('The file has no data rows. Fill in the template and try again.');
+    }
+
+    const allErrors: BulkRowError[] = [...errors];
+
+    if (!actor.isSuperAdmin && releases.length > 0) {
+      await ensureLabelOwnershipBackfill();
+      const uniqueNormalized = [...new Set(releases.map((r) => r.label.trim().toLowerCase()))];
+      const labels = await ReleaseLabelModel.find({ normalizedName: { $in: uniqueNormalized } })
+        .select('name normalizedName ownedBy status')
+        .lean();
+      const byNorm = new Map(labels.map((l) => [l.normalizedName, l]));
+
+      for (const release of releases) {
+        const label = byNorm.get(release.label.trim().toLowerCase());
+        if (!label) {
+          allErrors.push({
+            row: release.rowNumber,
+            field: 'Label',
+            message: `Label "${release.label}" is not available. Create it from your release form first.`,
+          });
+        } else if (String(label.ownedBy) !== actor.id) {
+          allErrors.push({
+            row: release.rowNumber,
+            field: 'Label',
+            message: `You do not have access to label "${release.label}"`,
+          });
+        } else if (label.status && label.status !== 'active') {
+          allErrors.push({
+            row: release.rowNumber,
+            field: 'Label',
+            message: `Label "${release.label}" is blocked and cannot be used`,
+          });
+        }
+      }
+    }
+
+    const ownSeen = new Map<string, number>();
+    for (const release of releases) {
+      for (const track of release.tracks) {
+        if (track.isrcOption !== 'own') continue;
+        const normalized = normalizeReleaseIsrc(track.isrc);
+        if (!normalized) continue;
+
+        const seenAt = ownSeen.get(normalized);
+        if (seenAt) {
+          allErrors.push({
+            row: release.rowNumber,
+            field: 'ISRC',
+            message: `ISRC "${normalized}" is duplicated in the file (also on row ${seenAt})`,
+          });
+          continue;
+        }
+        ownSeen.set(normalized, release.rowNumber);
+
+        if (await isReleaseIsrcTaken(normalized)) {
+          allErrors.push({
+            row: release.rowNumber,
+            field: 'ISRC',
+            message: `ISRC "${normalized}" is already taken`,
+          });
+        }
+      }
+    }
+
+    const dupKey = (title: string, artist: string, label: string) =>
+      `${title.trim().toLowerCase()}|${artist.trim().toLowerCase()}|${label.trim().toLowerCase()}`;
+
+    const keySeenAt = new Map<string, number>();
+    const upcSeenAt = new Map<string, number>();
+    for (const release of releases) {
+      const key = dupKey(release.title, release.artist, release.label);
+      const seenAt = keySeenAt.get(key);
+      if (seenAt) {
+        allErrors.push({
+          row: release.rowNumber,
+          field: 'Title',
+          message: `Duplicate release in the file — same title, artist and label as row ${seenAt}`,
+        });
+      } else {
+        keySeenAt.set(key, release.rowNumber);
+      }
+
+      const upc = release.upc.trim();
+      if (upc) {
+        const upcRow = upcSeenAt.get(upc);
+        if (upcRow) {
+          allErrors.push({
+            row: release.rowNumber,
+            field: 'UPC',
+            message: `Duplicate UPC "${upc}" in the file (also on row ${upcRow})`,
+          });
+        } else {
+          upcSeenAt.set(upc, release.rowNumber);
+        }
+      }
+    }
+
+    if (releases.length > 0) {
+      const titles = [...new Set(releases.map((r) => r.title.trim()))];
+      const upcs = [...new Set(releases.map((r) => r.upc.trim()).filter(Boolean))];
+
+      const existing = await MusicReleaseModel.find(
+        {
+          $or: [
+            { title: { $in: titles.map((t) => new RegExp(`^${escapeRegex(t)}$`, 'i')) } },
+            ...(upcs.length ? [{ upc: { $in: upcs } }] : []),
+          ],
+        },
+        { title: 1, artist: 1, label: 1, upc: 1 },
+      ).lean();
+
+      const existingKeys = new Set(
+        existing.map((e) => dupKey(e.title ?? '', e.artist ?? '', e.label ?? '')),
+      );
+      const existingUpcs = new Set(existing.map((e) => (e.upc ?? '').trim()).filter(Boolean));
+
+      for (const release of releases) {
+        if (existingKeys.has(dupKey(release.title, release.artist, release.label))) {
+          allErrors.push({
+            row: release.rowNumber,
+            field: 'Title',
+            message: `A release with this title, artist and label already exists`,
+          });
+        }
+        const upc = release.upc.trim();
+        if (upc && existingUpcs.has(upc)) {
+          allErrors.push({
+            row: release.rowNumber,
+            field: 'UPC',
+            message: `UPC "${upc}" is already used by an existing release`,
+          });
+        }
+      }
+    }
+
+    if (allErrors.length > 0) {
+      allErrors.sort((a, b) => a.row - b.row);
+      return { totalRows, created: 0, failed: totalRows, errors: allErrors };
+    }
+
+    const generateCount = releases.reduce(
+      (sum, release) => sum + release.tracks.filter((t) => t.isrcOption === 'generate').length,
+      0,
+    );
+    const generatedCodes = generateCount > 0 ? await allocateReleaseIsrcCodes(generateCount) : [];
+    let cursor = 0;
+
+    const documents = releases.map((release) => {
+      const tracks = release.tracks.map((track) => {
+        if (track.isrcOption === 'generate') {
+          const isrc = generatedCodes[cursor] ?? '';
+          cursor += 1;
+          return { ...track, isrc, isrcOption: 'generate' as const };
+        }
+        return { ...track, isrc: normalizeReleaseIsrc(track.isrc), isrcOption: 'own' as const };
+      });
+
+      return {
+        title: release.title,
+        version: release.version,
+        artist: release.artist,
+        releaseType: release.releaseType,
+        releasingDate: release.releasingDate,
+        label: release.label,
+        instrumental: release.instrumental,
+        explicit: release.explicit,
+        aiGenerated: release.aiGenerated,
+        upc: release.upc,
+        pLine: release.pLine,
+        cLine: release.cLine,
+        coverArtUrl: '',
+        audioFiles: [],
+        tracks,
+        crbtEntries: release.crbtEntries,
+        scheduledReleaseDate: release.scheduledReleaseDate,
+        scheduleNotes: release.scheduleNotes,
+        releasePlatform: release.releasePlatform,
+        status: MUSIC_RELEASE_STATUS.IN_REVIEW,
+        createdBy: actor.id,
+        updatedBy: actor.id,
+      };
+    });
+
+    const inserted = await MusicReleaseModel.insertMany(documents, { ordered: false });
+
+    await Promise.allSettled(
+      inserted.map(async (doc) => {
+        const populated = await musicReleaseRepository.findByIdPopulated(doc._id.toString());
+        if (populated) {
+          await releaseNotificationsService.notifyReleaseCreated(populated as IMusicRelease, actor);
+        }
+      }),
+    );
+
+    return { totalRows, created: inserted.length, failed: 0, errors: [] };
+  }
+
   async update(
     id: string,
     dto: CreateMusicReleaseBodyDto,
@@ -209,6 +471,8 @@ class MusicReleaseService {
     assertOwnership(item, actor);
 
     await assertLabelsAccessible(actor, dto.label);
+
+    await assertReleaseNotDuplicate(dto, id);
 
     await assertOwnIsrcsAvailable(dto.tracks, id);
 

@@ -9,6 +9,8 @@ export const NOTIFICATION_TYPE = {
   RELEASE_UPDATED: 'release_updated',
   RELEASE_STATUS_UPDATED: 'release_status_updated',
   LABEL_TRANSFERRED: 'label_transferred',
+  CHANNEL_ENTRY_CREATED: 'channel_entry_created',
+  CHANNEL_STATUS_UPDATED: 'channel_status_updated',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICATION_TYPE];

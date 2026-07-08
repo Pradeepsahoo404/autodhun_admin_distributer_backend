@@ -4,6 +4,10 @@ import { connectDatabase, disconnectDatabase } from '@/config/db';
 import { env } from '@/config/env';
 import { logger } from '@/config/logger';
 import { startAutoDeleteCron, stopAutoDeleteCron } from '@/cron/autoDeleteCron';
+import {
+  startChannelLinkingAutoRejectCron,
+  stopChannelLinkingAutoRejectCron,
+} from '@/cron/channelLinkingAutoRejectCron';
 
 const bootstrap = async (): Promise<void> => {
   await connectDatabase();
@@ -13,12 +17,14 @@ const bootstrap = async (): Promise<void> => {
     logger.info(`Server running on port ${env.PORT} (${env.NODE_ENV})`);
     logger.info(`API base path: ${env.API_PREFIX}`);
     startAutoDeleteCron();
+    startChannelLinkingAutoRejectCron();
   });
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.warn(`${signal} received. Shutting down gracefully...`);
     server.close(async () => {
       stopAutoDeleteCron();
+      stopChannelLinkingAutoRejectCron();
       await disconnectDatabase();
       process.exit(0);
     });

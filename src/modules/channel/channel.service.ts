@@ -1,0 +1,168 @@
+import { channelRepository } from './channel.repository';
+import { ApiError } from '@/utils/ApiError';
+import { CHANNEL_STATUS, IChannel } from './channel.model';
+import { PaginatedResult } from '@/types';
+import {
+  CreateChannelDto,
+  ExportQueryDto,
+  ListQueryDto,
+  UpdateChannelDto,
+  UpdateStatusDto,
+} from './channel.validator';
+import { IUser } from '@/modules/user/user.model';
+import {
+  CHANNEL_NOTIFICATION_CONFIG,
+  channelNotificationsService,
+} from '@/modules/notification/channel-notifications.service';
+
+interface Actor {
+  id: string;
+  isSuperAdmin: boolean;
+  name?: string;
+}
+
+function buildChannelSummary(item: IChannel): Record<string, string> {
+  return {
+    channelName: item.channelName,
+    channelLink: item.channelLink,
+    status: item.status,
+  };
+}
+
+function assertOwnership(item: IChannel, actor: Actor): void {
+  if (actor.isSuperAdmin) return;
+  const createdBy = item.createdBy as unknown;
+  const ownerId =
+    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
+      ? String((createdBy as { _id: { toString(): string } })._id)
+      : String(createdBy);
+  if (ownerId !== actor.id) {
+    throw ApiError.forbidden('You can only modify your own channels');
+  }
+}
+
+function escapeCsv(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function formatDateTime(date: Date): string {
+  return date.toISOString().replace('T', ' ').slice(0, 19);
+}
+
+class ChannelService {
+  private scope(actor: Actor) {
+    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+  }
+
+  async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IChannel>> {
+    return channelRepository.paginate(query, this.scope(actor));
+  }
+
+  async getById(id: string, actor: Actor): Promise<IChannel> {
+    const item = await channelRepository.findByIdPopulated(id);
+    if (!item) throw ApiError.notFound('Channel not found');
+    assertOwnership(item, actor);
+    return item;
+  }
+
+  async create(dto: CreateChannelDto, actor: Actor): Promise<IChannel> {
+    const created = await channelRepository.create({
+      ...dto,
+      status: CHANNEL_STATUS.ACTIVE,
+      createdBy: actor.id as never,
+      updatedBy: actor.id as never,
+    });
+    const populated = await channelRepository.findByIdPopulated(created._id.toString());
+    const result = populated as IChannel;
+    await channelNotificationsService.notifyEntryCreated(
+      CHANNEL_NOTIFICATION_CONFIG.createChannel,
+      result as never,
+      actor,
+      buildChannelSummary(result),
+    );
+    return result;
+  }
+
+  async update(id: string, dto: UpdateChannelDto, actor: Actor): Promise<IChannel> {
+    const item = await channelRepository.findByIdPopulated(id);
+    if (!item) throw ApiError.notFound('Channel not found');
+    assertOwnership(item, actor);
+
+    const updated = await channelRepository.updateById(id, {
+      ...dto,
+      updatedBy: actor.id as never,
+    });
+    const populated = await channelRepository.findByIdPopulated(updated!._id.toString());
+    return populated as IChannel;
+  }
+
+  async updateStatus(id: string, dto: UpdateStatusDto, actor: Actor): Promise<IChannel> {
+    if (!actor.isSuperAdmin) {
+      throw ApiError.forbidden('Only Super Admin can change channel status');
+    }
+
+    const item = await channelRepository.findById(id);
+    if (!item) throw ApiError.notFound('Channel not found');
+
+    await channelRepository.updateById(id, {
+      status: dto.status,
+      updatedBy: actor.id as never,
+    });
+
+    const populated = await channelRepository.findByIdPopulated(id);
+    const result = populated as IChannel;
+    await channelNotificationsService.notifyStatusUpdated(
+      CHANNEL_NOTIFICATION_CONFIG.createChannel,
+      result as never,
+      dto.status,
+      actor,
+      buildChannelSummary(result),
+    );
+    return result;
+  }
+
+  async remove(id: string, actor: Actor): Promise<void> {
+    const item = await channelRepository.findByIdPopulated(id);
+    if (!item) throw ApiError.notFound('Channel not found');
+    assertOwnership(item, actor);
+    await channelRepository.deleteById(id);
+  }
+
+  async exportCsv(query: ExportQueryDto, actor: Actor): Promise<string> {
+    const items = await channelRepository.findForExport({
+      ...this.scope(actor),
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+    });
+
+    const headers = [
+      'Channel Name',
+      'Existing Channel Link',
+      'Status',
+      'Admin Name',
+      'Admin Email',
+      'Created At',
+      'Updated At',
+    ];
+
+    const rows = items.map((item) => {
+      const creator = item.createdBy as unknown as IUser | undefined;
+      return [
+        escapeCsv(item.channelName),
+        escapeCsv(item.channelLink),
+        escapeCsv(item.status),
+        escapeCsv(creator?.name ?? ''),
+        escapeCsv(creator?.email ?? ''),
+        escapeCsv(formatDateTime(item.createdAt)),
+        escapeCsv(formatDateTime(item.updatedAt)),
+      ].join(',');
+    });
+
+    return [headers.join(','), ...rows].join('\n');
+  }
+}
+
+export const channelService = new ChannelService();

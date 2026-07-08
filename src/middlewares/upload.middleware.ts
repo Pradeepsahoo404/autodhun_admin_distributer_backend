@@ -69,6 +69,41 @@ const releaseUpload = multer({
   },
 });
 
+const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
+
+const SPREADSHEET_EXTENSIONS = /\.(xlsx|xls|csv)$/i;
+
+const spreadsheetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_IMPORT_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (!SPREADSHEET_EXTENSIONS.test(file.originalname)) {
+      cb(new Error('Only .xlsx, .xls or .csv files are allowed'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+/** Parses a single `file` spreadsheet for bulk release import. */
+export const uploadReleaseImport: RequestHandler = (req, res, next) => {
+  spreadsheetUpload.single('file')(req, res, (error) => {
+    if (error instanceof MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        next(ApiError.badRequest('File must be under 5MB'));
+        return;
+      }
+      next(ApiError.badRequest(error.message));
+      return;
+    }
+    if (error) {
+      next(ApiError.badRequest(error.message));
+      return;
+    }
+    next();
+  });
+};
+
 /** Parses cover art + audio files for music release submission. */
 export const uploadMusicRelease: RequestHandler = (req, res, next) => {
   releaseUpload.fields([

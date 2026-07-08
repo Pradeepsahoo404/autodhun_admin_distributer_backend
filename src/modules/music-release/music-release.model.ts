@@ -115,7 +115,7 @@ const musicReleaseSchema = new Schema<IMusicRelease>(
     upc: { type: String, default: '' },
     pLine: { type: String, default: '' },
     cLine: { type: String, default: '' },
-    coverArtUrl: { type: String, required: true },
+    coverArtUrl: { type: String, default: '' },
     audioFiles: { type: [audioFileSchema], default: [] },
     tracks: { type: [trackSchema], default: [] },
     crbtEntries: { type: [crbtSchema], default: [] },
