@@ -13,6 +13,7 @@ import {
   UpdateLabelStatusDto,
 } from './release-catalog.validator';
 import { PaginatedResult } from '@/types';
+import { labelUpdateService } from '@/modules/label-update/label-update.service';
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase();
@@ -142,12 +143,13 @@ async function createLabel(dto: CreateCatalogNameDto, userId: string): Promise<I
   }
 }
 
-async function updateLabel(id: string, dto: UpdateLabelDto, _actor: ManageActor): Promise<IReleaseLabel> {
+async function updateLabel(id: string, dto: UpdateLabelDto, actor: ManageActor): Promise<IReleaseLabel> {
   await ensureLabelStatusBackfill();
 
   const label = await ReleaseLabelModel.findById(id).exec();
   if (!label) throw ApiError.notFound('Label not found');
 
+  const previousName = label.name;
   const name = dto.name.trim();
   const normalizedName = normalizeName(name);
   const duplicate = await ReleaseLabelModel.findOne({
@@ -160,6 +162,16 @@ async function updateLabel(id: string, dto: UpdateLabelDto, _actor: ManageActor)
   label.name = name;
   label.normalizedName = normalizedName;
   await label.save();
+
+  if (actor.isSuperAdmin && previousName !== name) {
+    await labelUpdateService.recordUpdate({
+      labelId: label._id.toString(),
+      previousName,
+      newName: name,
+      ownerId: label.ownedBy.toString(),
+      updatedById: actor.id,
+    });
+  }
 
   const populated = await ReleaseLabelModel.findById(label._id).populate('ownedBy', 'name email').exec();
   return populated as IReleaseLabel;

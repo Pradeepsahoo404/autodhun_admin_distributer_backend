@@ -20,6 +20,7 @@ import { cronjobSettingsRoutes } from '@/modules/cronjob-settings/cronjob-settin
 import { musicReleaseRoutes } from '@/modules/music-release/music-release.routes';
 import { releaseCatalogRoutes } from '@/modules/release-catalog/release-catalog.routes';
 import { labelTransferRoutes } from '@/modules/label-transfer/label-transfer.routes';
+import { labelUpdateRoutes } from '@/modules/label-update/label-update.routes';
 
 const router = Router();
 
@@ -50,5 +51,6 @@ router.use('/cronjob-settings', cronjobSettingsRoutes);
 router.use('/music-releases', musicReleaseRoutes);
 router.use('/release-catalog', releaseCatalogRoutes);
 router.use('/label-transfers', labelTransferRoutes);
+router.use('/label-updates', labelUpdateRoutes);
 
 export const apiRouter = router;

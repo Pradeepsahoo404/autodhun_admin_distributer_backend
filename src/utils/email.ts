@@ -432,6 +432,44 @@ export interface LabelTransferEmailOptions {
   dashboardUrl: string;
 }
 
+interface LabelUpdateEmailOptions {
+  recipientName: string;
+  previousName: string;
+  newName: string;
+  updatedByName: string;
+  dashboardUrl: string;
+}
+
+export const buildLabelUpdateEmail = ({
+  recipientName,
+  previousName,
+  newName,
+  updatedByName,
+  dashboardUrl,
+}: LabelUpdateEmailOptions): { subject: string; html: string; text: string } => {
+  const safePrevious = escapeHtml(previousName);
+  const safeNew = escapeHtml(newName);
+  const subject = `Autodhun — Your label "${newName}" has been updated`;
+
+  const layoutOptions: WhiteEmailLayoutOptions = {
+    recipientName,
+    paragraphs: [
+      `Your label name has been updated by a Super Admin. The label previously known as <strong>${safePrevious}</strong> is now <strong>${safeNew}</strong>.`,
+      'This change applies across releases and catalog modules linked to this label.',
+    ],
+    noteBlock: [`Previous name: ${previousName}`, `New name: ${newName}`, `Updated by: ${updatedByName}`].join('\n'),
+    instruction: 'Please sign in to review your labels and releases.',
+    ctaLabel: 'View your labels',
+    ctaUrl: dashboardUrl,
+  };
+
+  return {
+    subject,
+    html: buildWhiteEmailLayout(layoutOptions),
+    text: buildWhiteEmailText(layoutOptions),
+  };
+};
+
 export const buildLabelTransferEmail = ({
   recipientName,
   labelName,

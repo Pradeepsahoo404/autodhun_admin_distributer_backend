@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { labelTransferService } from './label-transfer.service';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { sendSuccess } from '@/utils/ApiResponse';
-import { TransferLabelDto } from './label-transfer.validator';
+import { TransferLabelDto, LabelTransferListQueryDto } from './label-transfer.validator';
 
 function releaseActor(req: Request) {
   return {
@@ -26,6 +26,12 @@ class LabelTransferController {
   transfer = asyncHandler(async (req: Request, res: Response) => {
     const item = await labelTransferService.transfer(req.body as TransferLabelDto, releaseActor(req));
     sendSuccess(res, item, 'Label transferred successfully');
+  });
+
+  history = asyncHandler(async (req: Request, res: Response) => {
+    const query = req.query as unknown as LabelTransferListQueryDto;
+    const result = await labelTransferService.listHistory(query, releaseActor(req));
+    sendSuccess(res, result, 'Label transfer history fetched');
   });
 }
 

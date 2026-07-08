@@ -1,6 +1,6 @@
 import { ROLES, USER_STATUS } from '@/constants';
 import { env } from '@/config/env';
-import { LabelTransferModel } from '@/modules/label-transfer/label-transfer.model';
+import { LabelTransferModel, ILabelTransfer } from '@/modules/label-transfer/label-transfer.model';
 import { ReleaseLabelModel } from '@/modules/release-catalog/release-label.model';
 import { LABEL_STATUS } from '@/modules/release-catalog/release-catalog.constants';
 import { roleRepository } from '@/modules/role/role.repository';
@@ -11,7 +11,8 @@ import { ApiError } from '@/utils/ApiError';
 import { buildLabelTransferEmail, sendMail } from '@/utils/email';
 import { ensureLabelOwnershipBackfill, findActiveAdminUsers } from '@/utils/labelOwnership';
 import { logger } from '@/config/logger';
-import { TransferLabelDto } from './label-transfer.validator';
+import { TransferLabelDto, LabelTransferListQueryDto } from './label-transfer.validator';
+import { PaginatedResult } from '@/types';
 
 interface Actor {
   id: string;
@@ -178,6 +179,42 @@ class LabelTransferService {
     }
 
     return findActiveAdminUsers();
+  }
+
+  async listHistory(
+    query: LabelTransferListQueryDto,
+    actor: Actor,
+  ): Promise<PaginatedResult<ILabelTransfer>> {
+    if (!actor.isSuperAdmin) {
+      throw ApiError.forbidden('Only Super Admin can view label transfer history');
+    }
+
+    const filter: Record<string, unknown> = {};
+
+    if (query.search?.trim()) {
+      const regex = { $regex: query.search.trim(), $options: 'i' };
+      filter.$or = [{ labelName: regex }];
+    }
+
+    const [items, total] = await Promise.all([
+      LabelTransferModel.find(filter)
+        .populate('fromUser', 'name email')
+        .populate('toUser', 'name email')
+        .populate('transferredBy', 'name email')
+        .sort({ createdAt: -1 })
+        .skip((query.page - 1) * query.limit)
+        .limit(query.limit)
+        .exec(),
+      LabelTransferModel.countDocuments(filter),
+    ]);
+
+    return {
+      items,
+      total,
+      page: query.page,
+      limit: query.limit,
+      totalPages: Math.ceil(total / query.limit),
+    };
   }
 }
 
