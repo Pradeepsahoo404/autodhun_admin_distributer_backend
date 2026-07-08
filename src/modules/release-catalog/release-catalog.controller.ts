@@ -54,6 +54,16 @@ class ReleaseCatalogController {
     sendSuccess(res, items, 'Artists fetched');
   });
 
+  listLanguages = asyncHandler(async (req: Request, res: Response) => {
+    const items = await releaseCatalogService.listLanguages(req.query as unknown as CatalogListQueryDto);
+    sendSuccess(res, items, 'Languages fetched');
+  });
+
+  listGenres = asyncHandler(async (req: Request, res: Response) => {
+    const items = await releaseCatalogService.listGenres(req.query as unknown as CatalogListQueryDto);
+    sendSuccess(res, items, 'Genres fetched');
+  });
+
   createArtist = asyncHandler(async (req: Request, res: Response) => {
     const item = await releaseCatalogService.createArtist(req.body as CreateCatalogNameDto, req.user!.id);
     sendSuccess(res, item, 'Artist saved', 201);

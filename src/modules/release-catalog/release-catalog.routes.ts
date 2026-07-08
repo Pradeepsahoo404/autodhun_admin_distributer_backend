@@ -18,6 +18,20 @@ const router = Router();
 router.use(authenticate);
 
 router.get(
+  '/languages',
+  checkPermission(RELEASE_MODULE, 'view'),
+  validate({ query: catalogListQuerySchema }),
+  releaseCatalogController.listLanguages,
+);
+
+router.get(
+  '/genres',
+  checkPermission(RELEASE_MODULE, 'view'),
+  validate({ query: catalogListQuerySchema }),
+  releaseCatalogController.listGenres,
+);
+
+router.get(
   '/artists',
   checkPermission(RELEASE_MODULE, 'view'),
   validate({ query: catalogListQuerySchema }),

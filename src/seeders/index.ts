@@ -7,6 +7,7 @@ import { ModuleModel } from '@/modules/module/module.model';
 import { PermissionModel } from '@/modules/permission/permission.model';
 import { UserModel } from '@/modules/user/user.model';
 import { DEFAULT_MODULES, ADMIN_DEFAULT_MODULE_SLUGS, ADMIN_DEFAULT_CRUD_MODULE_SLUGS, DEPRECATED_MODULE_SLUGS } from '@/constants/modules.seed';
+import { seedReleaseMetadata } from '@/seeders/release-metadata.seed';
 import { AUTH_PROVIDER, ROLES, ROLE_STATUS, USER_STATUS } from '@/constants';
 import { hashPassword } from '@/utils/password';
 
@@ -157,6 +158,7 @@ const run = async (): Promise<void> => {
     await seedModules();
     await seedPermissions();
     await seedUsers();
+    await seedReleaseMetadata();
     logger.info('Database seeding complete');
   } catch (error) {
     logger.error('Seeding failed', error);

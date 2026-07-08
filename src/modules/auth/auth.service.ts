@@ -6,6 +6,9 @@ import { issueTokenPair, verifyRefreshToken } from '@/utils/jwt';
 import { verifyGoogleIdToken } from '@/utils/google';
 import { deleteCloudinaryImage, uploadAvatarImage } from '@/utils/cloudinaryUpload';
 import { ApiError } from '@/utils/ApiError';
+import { buildPasswordUpdatedEmail, sendMail } from '@/utils/email';
+import { env } from '@/config/env';
+import { logger } from '@/config/logger';
 import { AUTH_PROVIDER, OTP_PURPOSE, ROLES, USER_STATUS, USER_INACTIVE_MESSAGE } from '@/constants';
 import { IUser } from '@/modules/user/user.model';
 import { IRole } from '@/modules/role/role.model';
@@ -23,6 +26,26 @@ interface LoginInput {
   email: string;
   password: string;
   acceptTerms: true;
+}
+
+function resolveLoginUrl(): string {
+  return `${env.CLIENT_URL.replace(/\/$/, '')}/login`;
+}
+
+async function sendPasswordUpdatedConfirmation(user: Pick<IUser, 'email' | 'name' | 'firstName'>): Promise<void> {
+  try {
+    const recipientName = user.name?.trim() || user.firstName?.trim() || 'there';
+    const { subject, html, text } = buildPasswordUpdatedEmail({
+      recipientName,
+      loginUrl: resolveLoginUrl(),
+    });
+    await sendMail({ to: user.email, subject, html, text });
+  } catch (error) {
+    logger.error('Failed to send password updated confirmation email', {
+      email: user.email,
+      error,
+    });
+  }
 }
 
 class AuthService {
@@ -222,6 +245,8 @@ class AuthService {
     const password = await hashPassword(newPassword);
     const updated = await userRepository.updateById(user._id.toString(), { password, provider: AUTH_PROVIDER.LOCAL });
     if (!updated) throw ApiError.internal('Failed to reset password');
+
+    await sendPasswordUpdatedConfirmation(user);
   }
 
   /**
@@ -294,6 +319,8 @@ class AuthService {
     const password = await hashPassword(newPassword);
     const updated = await userRepository.updateById(userId, { password });
     if (!updated) throw ApiError.internal('Failed to update password');
+
+    await sendPasswordUpdatedConfirmation(user);
   }
 
   async updateProfile(

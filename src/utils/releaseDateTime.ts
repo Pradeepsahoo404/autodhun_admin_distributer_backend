@@ -47,12 +47,47 @@ export function assertScheduledOnOrAfterRelease(
 }
 
 export function parseTimeToMinutes(value: string): number | null {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(value);
+  const hms = /^(\d{1,2}):(\d{2}):(\d{2})$/.exec(value.trim());
+  if (hms) {
+    const hour = Number(hms[1]);
+    const minute = Number(hms[2]);
+    const second = Number(hms[3]);
+    if (hour < 0 || minute < 0 || minute > 59 || second < 0 || second > 59) return null;
+    return hour * 60 + minute + Math.floor(second / 60);
+  }
+
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
   if (!match) return null;
   const hour = Number(match[1]);
   const minute = Number(match[2]);
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
   return hour * 60 + minute;
+}
+
+export function isValidCrbtStartTime(value: string): boolean {
+  const trimmed = value.trim();
+  if (!/^(\d{1,2}):(\d{2}):(\d{2})$/.test(trimmed)) return false;
+  const [, h, m, s] = trimmed.match(/^(\d+):(\d+):(\d+)$/) ?? [];
+  if (!h || !m || !s) return false;
+  const minute = Number(m);
+  const second = Number(s);
+  return minute >= 0 && minute <= 59 && second >= 0 && second <= 59 && Number(h) >= 0;
+}
+
+export function isTodayOrPastApiDate(value: string): boolean {
+  const parsed = parseApiDateString(value);
+  if (!parsed) return true;
+  const today = startOfDay(new Date());
+  return startOfDay(parsed).getTime() <= today.getTime();
+}
+
+export function tomorrowApiDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function isPastTimeForToday(time: string): boolean {

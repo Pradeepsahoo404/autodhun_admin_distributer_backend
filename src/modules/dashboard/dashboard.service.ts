@@ -14,6 +14,10 @@ import {
   IssuesAnalyticsModuleSlug,
   issuesAnalyticsService,
 } from './issues-analytics.service';
+import {
+  ReleaseAnalyticsBundle,
+  releaseAnalyticsService,
+} from './release-analytics.service';
 
 export interface DashboardResponse {
   earnings: number;
@@ -24,6 +28,7 @@ export interface DashboardResponse {
   permissions: Record<string, { canView: boolean; canCreate: boolean; canUpdate: boolean; canDelete: boolean }>;
   rightsManagerAnalytics: RightsManagerAnalytics | null;
   issuesAnalytics: IssuesAnalytics | null;
+  releaseAnalytics: ReleaseAnalyticsBundle;
 }
 
 class DashboardService {
@@ -87,6 +92,14 @@ class DashboardService {
       visibleIssuesSlugs,
     );
 
+    const releaseAnalytics = await releaseAnalyticsService.getAnalytics(
+      { userId, roleSlug },
+      {
+        includeAdmin: has('create-new-release', 'view') || has('assets', 'view'),
+        includeContentDelivery: has('content-delivery', 'view'),
+      },
+    );
+
     return {
       earnings: 0, // Wire to a real earnings/payments source when available.
       currency: 'INR',
@@ -96,6 +109,7 @@ class DashboardService {
       permissions,
       rightsManagerAnalytics,
       issuesAnalytics,
+      releaseAnalytics,
     };
   }
 }

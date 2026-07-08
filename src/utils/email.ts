@@ -58,27 +58,177 @@ export const sendMail = async ({
   }
 };
 
-export const buildOtpEmail = (otp: string, purposeLabel: string): { subject: string; html: string; text: string } => {
-  const subject = `Your ${purposeLabel} code: ${otp}`;
-  const text = `Your ${purposeLabel} verification code is ${otp}. It expires in ${env.OTP_EXPIRY_MINUTES} minutes.`;
-  const html = `
-  <div style="background:#0a0a0a;padding:40px 0;font-family:Arial,Helvetica,sans-serif;">
-    <div style="max-width:480px;margin:0 auto;background:#111111;border:1px solid #1f1f1f;border-radius:16px;padding:40px;">
-      <h1 style="color:#ffffff;font-size:22px;margin:0 0 8px;">Verify your account</h1>
-      <p style="color:#9ca3af;font-size:14px;line-height:1.6;margin:0 0 24px;">
-        Use the 6-digit code below to complete your ${purposeLabel.toLowerCase()}. This code expires in ${env.OTP_EXPIRY_MINUTES} minutes.
+interface WhiteEmailLayoutOptions {
+  recipientName: string;
+  /** HTML paragraph content (inner HTML only — escape dynamic values before passing). */
+  paragraphs: string[];
+  /** Plain-text note shown in the gray left-border box. */
+  noteBlock?: string;
+  /** Use `code` for OTP-style large centered digits. */
+  noteBlockVariant?: 'default' | 'code';
+  instruction?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  supportEmail?: string;
+}
+
+/** Shared Autodhun white email layout (Virgin Music–style). */
+function buildWhiteEmailLayout({
+  recipientName,
+  paragraphs,
+  noteBlock,
+  noteBlockVariant = 'default',
+  instruction,
+  ctaLabel,
+  ctaUrl,
+  supportEmail = env.MAIL_FROM_EMAIL,
+}: WhiteEmailLayoutOptions): string {
+  const safeName = escapeHtml(recipientName);
+  const safeSupport = escapeHtml(supportEmail);
+
+  const paragraphsHtml = paragraphs
+    .map(
+      (paragraph) =>
+        `<p style="margin:0 0 20px;color:#111111;font-size:15px;line-height:1.7;">${paragraph}</p>`,
+    )
+    .join('');
+
+  const isCodeBlock = noteBlockVariant === 'code';
+  const noteHtml = noteBlock?.trim()
+    ? `<div style="margin:0 0 28px;padding:${isCodeBlock ? '24px 18px' : '16px 18px'};background:#f9f9f9;border-left:3px solid #111111;">
+        <p style="margin:0;color:#111111;${
+          isCodeBlock
+            ? 'font-size:36px;font-weight:700;letter-spacing:12px;line-height:1.3;text-align:center;'
+            : 'font-size:14px;line-height:1.7;white-space:pre-wrap;'
+        }">
+          ${escapeHtml(noteBlock.trim()).replace(/\n/g, isCodeBlock ? '' : '<br/>')}
+        </p>
+      </div>`
+    : '';
+
+  const instructionHtml = instruction
+    ? `<p style="margin:0 0 24px;color:#111111;font-size:15px;line-height:1.7;">${instruction}</p>`
+    : '';
+
+  const ctaHtml =
+    ctaLabel && ctaUrl
+      ? `<p style="margin:0 0 28px;">
+          <a href="${ctaUrl}" style="color:#111111;font-size:14px;font-weight:700;text-decoration:underline;">
+            ${escapeHtml(ctaLabel)}
+          </a>
+        </p>`
+      : '';
+
+  return `
+  <div style="background:#f4f4f4;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:640px;margin:0 auto;background:#ffffff;padding:40px 36px;">
+      <p style="margin:0 0 20px;color:#111111;font-size:15px;line-height:1.7;">
+        Hi ${safeName},
       </p>
-      <div style="text-align:center;margin:24px 0;">
-        <span style="display:inline-block;font-size:34px;letter-spacing:12px;font-weight:700;color:#A3FF12;background:#0a0a0a;border:1px solid #1f1f1f;border-radius:12px;padding:18px 24px;">
-          ${otp}
-        </span>
-      </div>
-      <p style="color:#6b7280;font-size:12px;line-height:1.6;margin:24px 0 0;">
-        If you didn't request this, you can safely ignore this email.
+      ${paragraphsHtml}
+      ${noteHtml}
+      ${instructionHtml}
+      ${ctaHtml}
+      <p style="margin:0 0 8px;color:#111111;font-size:14px;line-height:1.6;">
+        If you have questions please contact
+        <a href="mailto:${safeSupport}" style="color:#111111;text-decoration:underline;">${safeSupport}</a>.
+      </p>
+      <p style="margin:0;color:#111111;font-size:14px;line-height:1.6;">
+        — The Autodhun Team
+      </p>
+      <hr style="border:none;border-top:1px solid #e5e5e5;margin:32px 0 24px;" />
+      <p style="margin:0;text-align:center;color:#888888;font-size:12px;line-height:1.5;">
+        You are receiving this email because you are an Autodhun user.
       </p>
     </div>
   </div>`;
+}
+
+function buildWhiteEmailText({
+  recipientName,
+  paragraphs,
+  noteBlock,
+  instruction,
+  ctaLabel,
+  ctaUrl,
+  supportEmail = env.MAIL_FROM_EMAIL,
+}: WhiteEmailLayoutOptions): string {
+  return [
+    `Hi ${recipientName},`,
+    '',
+    ...paragraphs.map((p) => p.replace(/<[^>]+>/g, '')),
+    '',
+    noteBlock?.trim() ? noteBlock.trim() : '',
+    noteBlock?.trim() ? '' : null,
+    instruction ?? '',
+    instruction ? '' : null,
+    ctaLabel && ctaUrl ? `${ctaLabel}: ${ctaUrl}` : null,
+    ctaLabel && ctaUrl ? '' : null,
+    `If you have questions please contact ${supportEmail}.`,
+    '',
+    '— The Autodhun Team',
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+}
+
+export const buildOtpEmail = (otp: string, purposeLabel: string): { subject: string; html: string; text: string } => {
+  const subject = `Your ${purposeLabel} code: ${otp}`;
+  const text = [
+    'Hi,',
+    '',
+    `Use the code below to complete your ${purposeLabel.toLowerCase()}. This code expires in ${env.OTP_EXPIRY_MINUTES} minutes.`,
+    '',
+    otp,
+    '',
+    "If you didn't request this, you can safely ignore this email.",
+    '',
+    `If you have questions please contact ${env.MAIL_FROM_EMAIL}.`,
+    '',
+    '— The Autodhun Team',
+  ].join('\n');
+
+  const html = buildWhiteEmailLayout({
+    recipientName: 'there',
+    paragraphs: [
+      `Use the code below to complete your ${escapeHtml(purposeLabel.toLowerCase())}. This code expires in ${env.OTP_EXPIRY_MINUTES} minutes.`,
+    ],
+    noteBlock: otp,
+    noteBlockVariant: 'code',
+    instruction: "If you didn't request this, you can safely ignore this email.",
+  });
+
   return { subject, html, text };
+};
+
+interface PasswordUpdatedEmailOptions {
+  recipientName: string;
+  loginUrl: string;
+  supportEmail?: string;
+}
+
+export const buildPasswordUpdatedEmail = ({
+  recipientName,
+  loginUrl,
+  supportEmail,
+}: PasswordUpdatedEmailOptions): { subject: string; html: string; text: string } => {
+  const subject = 'Your Autodhun password has been updated';
+
+  const layoutOptions: WhiteEmailLayoutOptions = {
+    recipientName,
+    paragraphs: ['Your password has been successfully updated.'],
+    instruction:
+      'If you did not make this change, please contact us immediately so we can help secure your account.',
+    ctaLabel: 'Sign in to Autodhun',
+    ctaUrl: loginUrl,
+    supportEmail,
+  };
+
+  return {
+    subject,
+    html: buildWhiteEmailLayout(layoutOptions),
+    text: buildWhiteEmailText(layoutOptions),
+  };
 };
 
 interface InviteAdminEmailOptions {
@@ -101,90 +251,67 @@ export const buildInviteAdminEmail = ({
 }: InviteAdminEmailOptions): { subject: string; html: string; text: string } => {
   const subject = 'You have been invited to Autodhun Admin';
   const customNote = personalMessage?.trim();
-  const safeCustomNote = customNote ? escapeHtml(customNote) : '';
-  const customNoteBlock = safeCustomNote
-    ? `<p style="color:#9ca3af;font-size:13px;line-height:1.7;margin:0 0 16px;">${safeCustomNote}</p>`
-    : '';
-  const profileBenefitsBlock = `<p style="color:#d1d5db;font-size:14px;line-height:1.7;margin:0 0 20px;padding:16px;border-left:3px solid #A3FF12;background:#0d0d0d;border-radius:8px;">${INVITE_PROFILE_BENEFITS_MESSAGE}</p>`;
-
-  const text = [
-    `Hi ${name},`,
-    '',
+  const credentialsNote = [
+    customNote ?? '',
+    customNote ? '' : null,
     INVITE_PROFILE_BENEFITS_MESSAGE,
-    customNote ? `\n${customNote}` : '',
     '',
-    'You have been invited as an Admin on Autodhun.',
     `Login URL: ${loginUrl}`,
     `Email: ${email}`,
-    `Temporary password: ${password}`,
-  ].join('\n');
+    `Password: ${password}`,
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
 
-  const html = `
-  <div style="background:#0a0a0a;padding:40px 0;font-family:Arial,Helvetica,sans-serif;">
-    <div style="max-width:520px;margin:0 auto;background:#111111;border:1px solid #1f1f1f;border-radius:16px;padding:40px;">
-      <h1 style="color:#ffffff;font-size:22px;margin:0 0 8px;">Welcome to Autodhun Admin</h1>
-      <p style="color:#9ca3af;font-size:14px;line-height:1.6;margin:0 0 20px;">
-        Hi ${escapeHtml(name)}, you have been invited as an <strong style="color:#A3FF12;">Admin</strong>. Use the credentials below to sign in.
-      </p>
-      ${profileBenefitsBlock}
-      ${customNoteBlock}
-      <div style="background:#0a0a0a;border:1px solid #1f1f1f;border-radius:12px;padding:20px;margin:0 0 24px;">
-        <p style="margin:0 0 10px;color:#9ca3af;font-size:13px;"><strong style="color:#fff;">Login URL:</strong> <a href="${loginUrl}" style="color:#A3FF12;">${loginUrl}</a></p>
-        <p style="margin:0 0 10px;color:#9ca3af;font-size:13px;"><strong style="color:#fff;">Email:</strong> ${email}</p>
-        <p style="margin:0;color:#9ca3af;font-size:13px;"><strong style="color:#fff;">Password:</strong> <span style="color:#A3FF12;font-weight:700;">${password}</span></p>
-      </div>
-      <p style="color:#6b7280;font-size:12px;line-height:1.6;margin:0;">
-        If you did not expect this invite, contact your administrator.
-      </p>
-    </div>
-  </div>`;
+  const layoutOptions: WhiteEmailLayoutOptions = {
+    recipientName: name,
+    paragraphs: [
+      'You have been invited as an <strong>Admin</strong> on Autodhun. Use the credentials below to sign in.',
+    ],
+    noteBlock: credentialsNote,
+    instruction: 'Please sign in and update your profile to access full benefits.',
+    ctaLabel: 'Sign in to Autodhun Admin',
+    ctaUrl: loginUrl,
+  };
+
+  const text = buildWhiteEmailText(layoutOptions);
+  const html = buildWhiteEmailLayout(layoutOptions);
 
   return { subject, html, text };
 };
 
 const RELEASE_STATUS_EMAIL_CONTENT: Record<
   string,
-  { headline: string; message: string; badgeColor: string; badgeTextColor: string; ctaLabel: string }
+  { introSuffix: string; instruction: string; ctaLabel: string }
 > = {
   in_review: {
-    headline: 'Release Under Review',
-    message:
-      'Your release is now in review. Our content team is reviewing your submission and will update you when the status changes.',
-    badgeColor: '#eab308',
-    badgeTextColor: '#000000',
-    ctaLabel: 'Open Dashboard',
+    introSuffix:
+      'is now in review. Our content team is reviewing your submission and will update you when the status changes.',
+    instruction: 'Please sign in to track your release status in the dashboard.',
+    ctaLabel: 'Open dashboard',
   },
   correction: {
-    headline: 'Correction Required',
-    message:
-      'Your release requires corrections before it can move forward. Please sign in, review your release, make the necessary updates, and resubmit.',
-    badgeColor: '#f97316',
-    badgeTextColor: '#ffffff',
-    ctaLabel: 'Review & Fix Release',
+    introSuffix: 'has been sent back for correction.',
+    instruction:
+      'Please sign in, review your release, make the necessary updates, and resubmit.',
+    ctaLabel: 'Review & fix release',
   },
   takedown: {
-    headline: 'Release Takedown',
-    message:
-      'Your release has been marked for takedown and is no longer moving through the review pipeline.',
-    badgeColor: '#ef4444',
-    badgeTextColor: '#ffffff',
-    ctaLabel: 'Open Dashboard',
+    introSuffix:
+      'has been marked for takedown and is no longer moving through the review pipeline.',
+    instruction: 'Please sign in to review your release in the Assets dashboard.',
+    ctaLabel: 'View release',
   },
   qc_approval: {
-    headline: 'QC Approved',
-    message:
-      'Great news! Your release has passed quality control and is approved. It will proceed toward going live on your selected platforms.',
-    badgeColor: '#a855f7',
-    badgeTextColor: '#ffffff',
+    introSuffix:
+      'has passed quality control and is approved. It will proceed toward going live on your selected platforms.',
+    instruction: 'Please sign in to view your release in the Assets dashboard.',
     ctaLabel: 'View in Assets',
   },
   live: {
-    headline: 'Your Release is Live!',
-    message:
-      'Congratulations! Your release is now live. You can view it in your Assets dashboard.',
-    badgeColor: '#A3FF12',
-    badgeTextColor: '#000000',
-    ctaLabel: 'View Live Release',
+    introSuffix: 'is now live. You can view it in your Assets dashboard.',
+    instruction: 'Please sign in to view your live release.',
+    ctaLabel: 'View live release',
   },
 };
 
@@ -210,7 +337,7 @@ export interface ReleaseCorrectionEmailOptions {
   supportEmail?: string;
 }
 
-/** Virgin Music–style white correction email with numbered reasons. */
+/** White correction email with a descriptive note block. */
 export const buildReleaseCorrectionEmail = ({
   recipientName,
   releaseTitle,
@@ -218,76 +345,33 @@ export const buildReleaseCorrectionEmail = ({
   label,
   reasons,
   dashboardUrl,
-  supportEmail = env.MAIL_FROM_EMAIL,
+  supportEmail,
 }: ReleaseCorrectionEmailOptions): { subject: string; html: string; text: string } => {
   const safeTitle = escapeHtml(releaseTitle);
   const safeArtist = escapeHtml(artist);
   const safeLabel = escapeHtml(label);
-  const safeName = escapeHtml(recipientName);
-  const safeSupport = escapeHtml(supportEmail);
 
+  const noteBody = reasons.join('\n\n').trim();
   const subject = `Autodhun — "${releaseTitle}" requires correction`;
 
-  const reasonItemsHtml = reasons
-    .map(
-      (reason, index) =>
-        `<li style="margin:0 0 14px;color:#111111;font-size:14px;line-height:1.6;">${index + 1}. ${escapeHtml(reason)}</li>`,
-    )
-    .join('');
+  const layoutOptions: WhiteEmailLayoutOptions = {
+    recipientName,
+    paragraphs: [
+      `Your recent submission <strong>${safeTitle}</strong> by ${safeArtist} on ${safeLabel} has been sent back for correction.`,
+    ],
+    noteBlock: noteBody,
+    instruction:
+      'Please sign in, review your release, make the necessary updates, and resubmit.',
+    ctaLabel: 'Review & fix release',
+    ctaUrl: dashboardUrl,
+    supportEmail,
+  };
 
-  const reasonItemsText = reasons.map((reason, index) => `${index + 1}. ${reason}`).join('\n');
-
-  const text = [
-    `Hi ${recipientName},`,
-    '',
-    `Your recent submission "${releaseTitle}" by ${artist} on ${label} requires correction for the following reasons:`,
-    '',
-    reasonItemsText,
-    '',
-    'Please sign in, review your release, make the necessary updates, and resubmit.',
-    '',
-    `Review release: ${dashboardUrl}`,
-    '',
-    `If you have questions please contact ${supportEmail}.`,
-    '',
-    '— The Autodhun Team',
-  ].join('\n');
-
-  const html = `
-  <div style="background:#f4f4f4;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;">
-    <div style="max-width:640px;margin:0 auto;background:#ffffff;padding:40px 36px;">
-      <p style="margin:0 0 20px;color:#111111;font-size:15px;line-height:1.7;">
-        Hi ${safeName},
-      </p>
-      <p style="margin:0 0 24px;color:#111111;font-size:15px;line-height:1.7;">
-        Your recent submission <strong>${safeTitle}</strong> by ${safeArtist} on ${safeLabel} has been sent back for correction for the following reasons.
-      </p>
-      <ol style="margin:0 0 28px;padding-left:20px;">
-        ${reasonItemsHtml}
-      </ol>
-      <p style="margin:0 0 24px;color:#111111;font-size:15px;line-height:1.7;">
-        Please sign in, review your release, make the necessary updates, and resubmit.
-      </p>
-      <p style="margin:0 0 28px;">
-        <a href="${dashboardUrl}" style="color:#111111;font-size:14px;font-weight:700;text-decoration:underline;">
-          Review &amp; fix release
-        </a>
-      </p>
-      <p style="margin:0 0 8px;color:#111111;font-size:14px;line-height:1.6;">
-        If you have questions please contact
-        <a href="mailto:${safeSupport}" style="color:#111111;text-decoration:underline;">${safeSupport}</a>.
-      </p>
-      <p style="margin:0;color:#111111;font-size:14px;line-height:1.6;">
-        — The Autodhun Team
-      </p>
-      <hr style="border:none;border-top:1px solid #e5e5e5;margin:32px 0 24px;" />
-      <p style="margin:0;text-align:center;color:#888888;font-size:12px;line-height:1.5;">
-        You are receiving this email because you are an Autodhun user.
-      </p>
-    </div>
-  </div>`;
-
-  return { subject, html, text };
+  return {
+    subject,
+    html: buildWhiteEmailLayout(layoutOptions),
+    text: buildWhiteEmailText(layoutOptions),
+  };
 };
 
 export const buildReleaseStatusUpdateEmail = ({
@@ -298,7 +382,6 @@ export const buildReleaseStatusUpdateEmail = ({
   statusKey,
   statusLabel,
   dashboardUrl,
-  isrc,
   correctionReasons,
 }: ReleaseStatusUpdateEmailOptions): { subject: string; html: string; text: string } => {
   if (statusKey === 'correction' && correctionReasons?.length) {
@@ -313,97 +396,32 @@ export const buildReleaseStatusUpdateEmail = ({
   }
 
   const content = RELEASE_STATUS_EMAIL_CONTENT[statusKey] ?? {
-    headline: 'Release Status Updated',
-    message: `Your release status has been updated to ${statusLabel}.`,
-    badgeColor: '#A3FF12',
-    badgeTextColor: '#000000',
-    ctaLabel: 'Open Dashboard',
+    introSuffix: `status has been updated to ${statusLabel}.`,
+    instruction: 'Please sign in to review your release in the dashboard.',
+    ctaLabel: 'Open dashboard',
   };
 
   const safeTitle = escapeHtml(releaseTitle);
   const safeArtist = escapeHtml(artist);
   const safeLabel = escapeHtml(label);
-  const safeName = escapeHtml(recipientName);
-  const safeStatus = escapeHtml(statusLabel);
-  const safeIsrc = isrc ? escapeHtml(isrc) : '';
 
   const subject = `Autodhun — "${releaseTitle}" status updated to ${statusLabel}`;
 
-  const isrcRow = safeIsrc
-    ? `<tr>
-        <td style="padding:8px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top;">ISRC</td>
-        <td style="padding:8px 0;color:#ffffff;font-size:13px;vertical-align:top;">${safeIsrc}</td>
-      </tr>`
-    : '';
+  const layoutOptions: WhiteEmailLayoutOptions = {
+    recipientName,
+    paragraphs: [
+      `Your recent submission <strong>${safeTitle}</strong> by ${safeArtist} on ${safeLabel} ${content.introSuffix}`,
+    ],
+    instruction: content.instruction,
+    ctaLabel: content.ctaLabel,
+    ctaUrl: dashboardUrl,
+  };
 
-  const text = [
-    `Hi ${recipientName},`,
-    '',
-    content.headline,
-    '',
-    content.message,
-    '',
-    'Release details:',
-    `- Title: ${releaseTitle}`,
-    `- Artist: ${artist}`,
-    `- Label: ${label}`,
-    `- Status: ${statusLabel}`,
-    isrc ? `- ISRC: ${isrc}` : '',
-    '',
-    `View dashboard: ${dashboardUrl}`,
-    '',
-    '— Autodhun Admin',
-  ]
-    .filter(Boolean)
-    .join('\n');
-
-  const html = `
-  <div style="background:#0a0a0a;padding:40px 0;font-family:Arial,Helvetica,sans-serif;">
-    <div style="max-width:520px;margin:0 auto;background:#111111;border:1px solid #1f1f1f;border-radius:16px;padding:40px;">
-      <p style="margin:0 0 16px;color:#6b7280;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Autodhun Admin</p>
-      <h1 style="color:#ffffff;font-size:22px;margin:0 0 8px;">${content.headline}</h1>
-      <p style="color:#9ca3af;font-size:14px;line-height:1.7;margin:0 0 20px;">
-        Hi ${safeName}, ${content.message}
-      </p>
-      <div style="margin:0 0 20px;">
-        <span style="display:inline-block;padding:6px 14px;border-radius:999px;background:${content.badgeColor};color:${content.badgeTextColor};font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">
-          ${safeStatus}
-        </span>
-      </div>
-      <div style="background:#0a0a0a;border:1px solid #1f1f1f;border-radius:12px;padding:20px;margin:0 0 24px;">
-        <p style="margin:0 0 12px;color:#ffffff;font-size:13px;font-weight:700;">Release Details</p>
-        <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">
-          <tr>
-            <td style="padding:8px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top;">Title</td>
-            <td style="padding:8px 0;color:#ffffff;font-size:13px;vertical-align:top;">${safeTitle}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#6b7280;font-size:13px;vertical-align:top;">Artist</td>
-            <td style="padding:8px 0;color:#ffffff;font-size:13px;vertical-align:top;">${safeArtist}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#6b7280;font-size:13px;vertical-align:top;">Label</td>
-            <td style="padding:8px 0;color:#ffffff;font-size:13px;vertical-align:top;">${safeLabel}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#6b7280;font-size:13px;vertical-align:top;">Status</td>
-            <td style="padding:8px 0;color:#ffffff;font-size:13px;vertical-align:top;">${safeStatus}</td>
-          </tr>
-          ${isrcRow}
-        </table>
-      </div>
-      <div style="text-align:center;margin:0 0 24px;">
-        <a href="${dashboardUrl}" style="display:inline-block;background:#A3FF12;color:#000000;font-size:14px;font-weight:700;text-decoration:none;border-radius:12px;padding:14px 28px;">
-          ${content.ctaLabel}
-        </a>
-      </div>
-      <p style="color:#6b7280;font-size:12px;line-height:1.6;margin:0;">
-        This is an automated notification from Autodhun Admin. If you have questions about this update, contact your Super Admin.
-      </p>
-    </div>
-  </div>`;
-
-  return { subject, html, text };
+  return {
+    subject,
+    html: buildWhiteEmailLayout(layoutOptions),
+    text: buildWhiteEmailText(layoutOptions),
+  };
 };
 
 export interface LabelTransferEmailOptions {
@@ -421,63 +439,23 @@ export const buildLabelTransferEmail = ({
   transferredByName,
   dashboardUrl,
 }: LabelTransferEmailOptions): { subject: string; html: string; text: string } => {
-  const safeRecipient = escapeHtml(recipientName);
   const safeLabel = escapeHtml(labelName);
-  const safeFrom = escapeHtml(fromAdminName);
-  const safeBy = escapeHtml(transferredByName);
-
   const subject = `Autodhun — Label "${labelName}" transferred to you`;
 
-  const text = [
-    `Hi ${recipientName},`,
-    '',
-    `The label "${labelName}" has been transferred to your account.`,
-    '',
-    `Previous owner: ${fromAdminName}`,
-    `Transferred by: ${transferredByName}`,
-    '',
-    'You now have exclusive access to use this label when creating releases and managing rights entries.',
-    '',
-    `Open dashboard: ${dashboardUrl}`,
-    '',
-    '— Autodhun Admin',
-  ].join('\n');
+  const layoutOptions: WhiteEmailLayoutOptions = {
+    recipientName,
+    paragraphs: [
+      `The label <strong>${safeLabel}</strong> has been transferred to your account. You now have exclusive access to use it across releases and rights modules.`,
+    ],
+    noteBlock: [`Previous owner: ${fromAdminName}`, `Transferred by: ${transferredByName}`].join('\n'),
+    instruction: 'Please sign in to manage your labels and releases.',
+    ctaLabel: 'Open label transfer',
+    ctaUrl: dashboardUrl,
+  };
 
-  const html = `
-  <div style="background:#0a0a0a;padding:40px 0;font-family:Arial,Helvetica,sans-serif;">
-    <div style="max-width:520px;margin:0 auto;background:#111111;border:1px solid #1f1f1f;border-radius:16px;padding:40px;">
-      <p style="margin:0 0 16px;color:#6b7280;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Autodhun Admin</p>
-      <h1 style="color:#ffffff;font-size:22px;margin:0 0 8px;">Label transferred to you</h1>
-      <p style="color:#9ca3af;font-size:14px;line-height:1.7;margin:0 0 20px;">
-        Hi ${safeRecipient}, the label <strong style="color:#A3FF12;">${safeLabel}</strong> has been assigned to your account.
-        You now have exclusive access to use it across releases and rights modules.
-      </p>
-      <div style="background:#0a0a0a;border:1px solid #1f1f1f;border-radius:12px;padding:20px;margin:0 0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">
-          <tr>
-            <td style="padding:8px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top;">Label</td>
-            <td style="padding:8px 0;color:#ffffff;font-size:13px;vertical-align:top;">${safeLabel}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#6b7280;font-size:13px;vertical-align:top;">Previous owner</td>
-            <td style="padding:8px 0;color:#ffffff;font-size:13px;vertical-align:top;">${safeFrom}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#6b7280;font-size:13px;vertical-align:top;">Transferred by</td>
-            <td style="padding:8px 0;color:#ffffff;font-size:13px;vertical-align:top;">${safeBy}</td>
-          </tr>
-        </table>
-      </div>
-      <div style="text-align:center;margin:0 0 24px;">
-        <a href="${dashboardUrl}" style="display:inline-block;background:#A3FF12;color:#000000;font-size:14px;font-weight:700;text-decoration:none;border-radius:12px;padding:14px 28px;">
-          Open Label Transfer
-        </a>
-      </div>
-      <p style="color:#6b7280;font-size:12px;line-height:1.6;margin:0;">
-        This is an automated notification from Autodhun Admin.
-      </p>
-    </div>
-  </div>`;
-
-  return { subject, html, text };
+  return {
+    subject,
+    html: buildWhiteEmailLayout(layoutOptions),
+    text: buildWhiteEmailText(layoutOptions),
+  };
 };

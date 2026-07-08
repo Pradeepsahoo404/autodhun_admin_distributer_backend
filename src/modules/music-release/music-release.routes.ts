@@ -3,7 +3,7 @@ import { musicReleaseController, parseMusicReleaseBody, parseMusicReleaseUpdateB
 import { authenticate } from '@/middlewares/auth.middleware';
 import { validate } from '@/middlewares/validate.middleware';
 import { uploadMusicRelease } from '@/middlewares/upload.middleware';
-import { listQuerySchema, updateStatusSchema, bulkUpdateStatusSchema, exportQuerySchema, nextIsrcQuerySchema } from './music-release.validator';
+import { listQuerySchema, updateStatusSchema, bulkUpdateStatusSchema, exportQuerySchema, nextIsrcQuerySchema, checkIsrcQuerySchema } from './music-release.validator';
 import { idParamSchema } from '@/validators/common.validator';
 import { z } from 'zod';
 
@@ -21,6 +21,8 @@ router.use(authenticate);
 router.get('/export', validate({ query: exportQuerySchema }), musicReleaseController.exportCsv);
 
 router.get('/isrc/next', validate({ query: nextIsrcQuerySchema }), musicReleaseController.previewNextIsrc);
+
+router.get('/isrc/check', validate({ query: checkIsrcQuerySchema }), musicReleaseController.checkIsrcAvailability);
 
 router.get('/', validate({ query: listQuerySchema }), musicReleaseController.list);
 

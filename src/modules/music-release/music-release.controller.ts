@@ -9,6 +9,7 @@ import {
   exportQuerySchema,
   listQuerySchema,
   nextIsrcQuerySchema,
+  checkIsrcQuerySchema,
 } from './music-release.validator';
 import { resolveLocalReleaseFile } from '@/utils/releaseUpload';
 import { createMusicReleaseBodySchema, updateMusicReleaseBodySchema } from './music-release.validator';
@@ -84,6 +85,16 @@ class MusicReleaseController {
     const { count } = nextIsrcQuerySchema.parse(req.query);
     const codes = await musicReleaseService.previewNextIsrc(count, releaseActor(req));
     sendSuccess(res, codes, 'Next ISRC preview');
+  });
+
+  checkIsrcAvailability = asyncHandler(async (req: Request, res: Response) => {
+    const { code, excludeReleaseId } = checkIsrcQuerySchema.parse(req.query);
+    const result = await musicReleaseService.checkIsrcAvailability(
+      code,
+      excludeReleaseId,
+      releaseActor(req),
+    );
+    sendSuccess(res, result, 'ISRC availability checked');
   });
 
   create = asyncHandler(async (req: Request, res: Response) => {

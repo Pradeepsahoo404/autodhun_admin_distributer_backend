@@ -23,7 +23,7 @@ import { permissionService } from '@/modules/permission/permission.service';
 import { uploadReleaseAudio, uploadReleaseCover } from '@/utils/releaseUpload';
 import { env } from '@/config/env';
 import { releaseNotificationsService } from '@/modules/notification/release-notifications.service';
-import { previewNextReleaseIsrc, resolveTracksIsrc } from '@/utils/releaseIsrc';
+import { previewNextReleaseIsrc, resolveTracksIsrc, assertOwnIsrcsAvailable, isReleaseIsrcTaken } from '@/utils/releaseIsrc';
 import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
 interface Actor {
@@ -141,6 +141,16 @@ class MusicReleaseService {
     return previewNextReleaseIsrc(safeCount);
   }
 
+  async checkIsrcAvailability(
+    code: string,
+    excludeReleaseId: string | undefined,
+    actor: Actor,
+  ): Promise<{ available: boolean }> {
+    await assertModuleAccess(actor, 'release', 'view');
+    const taken = await isReleaseIsrcTaken(code, excludeReleaseId);
+    return { available: !taken };
+  }
+
   async create(dto: CreateMusicReleaseBodyDto, files: UploadedFiles, actor: Actor): Promise<IMusicRelease> {
     await assertModuleAccess(actor, 'release', 'create');
 
@@ -152,6 +162,8 @@ class MusicReleaseService {
     }
 
     await assertLabelsAccessible(actor, dto.label);
+
+    await assertOwnIsrcsAvailable(dto.tracks);
 
     const releaseKey = new Types.ObjectId().toString();
     const coverArtUrl = await uploadReleaseCover(files.coverArt.buffer, releaseKey);
@@ -197,6 +209,8 @@ class MusicReleaseService {
     assertOwnership(item, actor);
 
     await assertLabelsAccessible(actor, dto.label);
+
+    await assertOwnIsrcsAvailable(dto.tracks, id);
 
     const editableStatuses = [MUSIC_RELEASE_STATUS.IN_REVIEW, MUSIC_RELEASE_STATUS.CORRECTION];
     if (!editableStatuses.includes(item.status as typeof editableStatuses[number])) {

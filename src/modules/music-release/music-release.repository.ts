@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { BaseRepository } from '@/repositories/base.repository';
 import { IMusicRelease, MusicReleaseModel } from './music-release.model';
 import { PaginatedResult } from '@/types';
@@ -42,7 +43,11 @@ function resolveScopedStatus(
 function buildFilter(scope: MusicReleaseListScope, queryStatus?: string): Record<string, unknown> {
   const filter: Record<string, unknown> = {};
 
-  if (scope.createdBy) filter.createdBy = scope.createdBy;
+  if (scope.createdBy) {
+    filter.createdBy = Types.ObjectId.isValid(scope.createdBy)
+      ? new Types.ObjectId(scope.createdBy)
+      : scope.createdBy;
+  }
 
   const status = resolveScopedStatus(scope.status, queryStatus);
   if (status) filter.status = status;
@@ -123,6 +128,20 @@ class MusicReleaseRepository extends BaseRepository<IMusicRelease> {
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 })
       .exec();
+  }
+
+  async countByStatus(scope: MusicReleaseListScope): Promise<Record<string, number>> {
+    const filter = buildFilter(scope);
+    const rows = await MusicReleaseModel.aggregate<{ _id: string; count: number }>([
+      { $match: filter },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]).exec();
+
+    const counts: Record<string, number> = {};
+    for (const row of rows) {
+      counts[row._id] = row.count;
+    }
+    return counts;
   }
 
   async updateStatusByIds(

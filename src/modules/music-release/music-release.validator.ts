@@ -1,20 +1,16 @@
 import { z } from 'zod';
 import {
-  RELEASE_ISRC_MESSAGE,
-  RELEASE_ISRC_PATTERN,
-  isValidReleaseIsrc,
-} from '@/utils/releaseIsrc';
-import {
   LETTERS_ONLY_MESSAGE,
   LETTERS_ONLY_PATTERN,
+  catalogLabelField,
   nameField,
   optionalNameField,
 } from '@/validators/field.validator';
 import {
   isPastApiDate,
-  isPastTimeForToday,
+  isTodayOrPastApiDate,
+  isValidCrbtStartTime,
   parseApiDateString,
-  parseTimeToMinutes,
   startOfDay,
 } from '@/utils/releaseDateTime';
 import {
@@ -64,28 +60,17 @@ const trackSchema = z
     lyrics: z.string().trim().max(5000).optional().default(''),
     isrcOption,
     isrc: z.string().trim().max(20).optional().default(''),
-    composer: optionalNameField('Composer', 120).optional().default(''),
-    producer: optionalNameField('Producer', 120).optional().default(''),
-    director: optionalNameField('Director', 120).optional().default(''),
-    language: optionalNameField('Language', 80).optional().default(''),
-    genre: optionalNameField('Genre', 80).optional().default(''),
-    subGenre: optionalNameField('Sub genre', 80).optional().default(''),
+    composer: nameField('Composer', 120),
+    producer: nameField('Producer', 120),
+    director: nameField('Director', 120),
+    language: catalogLabelField('Language', 120),
+    genre: catalogLabelField('Genre', 120),
+    subGenre: catalogLabelField('Sub genre', 120),
     price: priceTier,
   })
   .superRefine((track, ctx) => {
-    if (track.isrcOption === 'own') {
-      if (!track.isrc?.trim()) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'ISRC is required when using your own', path: ['isrc'] });
-        return;
-      }
-      if (!isValidReleaseIsrc(track.isrc.trim())) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: RELEASE_ISRC_MESSAGE, path: ['isrc'] });
-      }
-      return;
-    }
-
-    if (track.isrc?.trim() && !RELEASE_ISRC_PATTERN.test(track.isrc.trim().toUpperCase())) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: RELEASE_ISRC_MESSAGE, path: ['isrc'] });
+    if (track.isrcOption === 'own' && !track.isrc?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'ISRC is required when using your own', path: ['isrc'] });
     }
   });
 
@@ -95,7 +80,7 @@ const crbtEntrySchema = z.object({
     .string()
     .trim()
     .min(1, 'Start time is required')
-    .refine((value) => parseTimeToMinutes(value) !== null, 'Start time must be valid (HH:mm)'),
+    .refine((value) => isValidCrbtStartTime(value), 'Start time must be valid (HH:MM:SS, e.g. 00:00:00)'),
 });
 
 const releaseBodyBase = z.object({
@@ -119,14 +104,6 @@ const releaseBodyBase = z.object({
   termsAccepted: z.literal(true, { errorMap: () => ({ message: 'You must accept the terms' }) }),
 });
 
-function todayApiDate(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 function applyReleaseDateRules(data: z.infer<typeof releaseBodyBase>, ctx: z.RefinementCtx): void {
   if (isPastApiDate(data.releasingDate)) {
     ctx.addIssue({
@@ -136,10 +113,10 @@ function applyReleaseDateRules(data: z.infer<typeof releaseBodyBase>, ctx: z.Ref
     });
   }
 
-  if (isPastApiDate(data.scheduledReleaseDate)) {
+  if (isTodayOrPastApiDate(data.scheduledReleaseDate)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Scheduled release date cannot be in the past',
+      message: 'Scheduled release date must be a future date',
       path: ['scheduledReleaseDate'],
     });
   }
@@ -157,18 +134,6 @@ function applyReleaseDateRules(data: z.infer<typeof releaseBodyBase>, ctx: z.Ref
       path: ['scheduledReleaseDate'],
     });
   }
-
-  if (data.releasingDate === todayApiDate()) {
-    data.crbtEntries.forEach((entry, index) => {
-      if (isPastTimeForToday(entry.startTime)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Start time cannot be in the past when releasing today',
-          path: ['crbtEntries', index, 'startTime'],
-        });
-      }
-    });
-  }
 }
 
 export const createMusicReleaseBodySchema = releaseBodyBase.superRefine(applyReleaseDateRules);
@@ -182,7 +147,7 @@ export const updateStatusSchema = z
     if (data.status === MUSIC_RELEASE_STATUS.CORRECTION && !data.correctionReasons?.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'At least one correction reason is required',
+        message: 'Correction note is required',
         path: ['correctionReasons'],
       });
     }
@@ -198,7 +163,7 @@ export const bulkUpdateStatusSchema = z
     if (data.status === MUSIC_RELEASE_STATUS.CORRECTION && !data.correctionReasons?.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'At least one correction reason is required',
+        message: 'Correction note is required',
         path: ['correctionReasons'],
       });
     }
@@ -248,6 +213,11 @@ export const nextIsrcQuerySchema = z.object({
   count: z.coerce.number().int().min(1).max(20).default(1),
 });
 
+export const checkIsrcQuerySchema = z.object({
+  code: z.string().trim().min(1, 'ISRC code is required').max(20),
+  excludeReleaseId: z.string().trim().optional(),
+});
+
 export type CreateMusicReleaseBodyDto = z.infer<typeof createMusicReleaseBodySchema>;
 export const updateMusicReleaseBodySchema = createMusicReleaseBodySchema;
 export type UpdateMusicReleaseBodyDto = z.infer<typeof updateMusicReleaseBodySchema>;
@@ -256,3 +226,4 @@ export type BulkUpdateMusicReleaseStatusDto = z.infer<typeof bulkUpdateStatusSch
 export type ListMusicReleasesQueryDto = z.infer<typeof listQuerySchema>;
 export type ExportMusicReleasesQueryDto = z.infer<typeof exportQuerySchema>;
 export type NextIsrcQueryDto = z.infer<typeof nextIsrcQuerySchema>;
+export type CheckIsrcQueryDto = z.infer<typeof checkIsrcQuerySchema>;

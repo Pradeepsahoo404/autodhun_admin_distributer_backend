@@ -34,7 +34,7 @@ const envSchema = z.object({
   /** Full sender, e.g. `Autodhun <help@autodhun.com>`. Falls back to MAIL_FROM_NAME + MAIL_FROM_EMAIL. */
   MAIL_FROM: z.string().optional().default(''),
   MAIL_FROM_NAME: z.string().default('Autodhun Admin'),
-  MAIL_FROM_EMAIL: z.string().default('no-reply@autodhun.com'),
+  MAIL_FROM_EMAIL: z.string().default('help@autodhun.com'),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().default(100),

@@ -54,8 +54,13 @@ const releaseUpload = multer({
       return cb(null, true);
     }
     if (file.fieldname === 'audioFiles') {
-      if (!file.mimetype.startsWith('audio/')) {
-        cb(new Error('Audio files must be audio format'));
+      const isWav =
+        file.mimetype === 'audio/wav' ||
+        file.mimetype === 'audio/x-wav' ||
+        file.mimetype === 'audio/wave' ||
+        /\.wav$/i.test(file.originalname);
+      if (!isWav) {
+        cb(new Error('Only WAV audio files are allowed'));
         return;
       }
       return cb(null, true);

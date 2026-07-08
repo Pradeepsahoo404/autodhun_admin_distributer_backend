@@ -4,7 +4,7 @@ import { LABEL_STATUS_VALUES } from './release-catalog.constants';
 
 export const catalogListQuerySchema = z.object({
   search: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(500).default(500),
 });
 
 export const createCatalogNameSchema = z.object({

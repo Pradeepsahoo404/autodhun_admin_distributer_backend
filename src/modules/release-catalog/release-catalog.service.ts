@@ -1,5 +1,7 @@
 import { ReleaseArtistModel, IReleaseArtist } from './release-artist.model';
 import { ReleaseLabelModel, IReleaseLabel } from './release-label.model';
+import { ReleaseLanguageModel, IReleaseLanguage } from './release-language.model';
+import { ReleaseGenreModel, IReleaseGenre } from './release-genre.model';
 import { LABEL_STATUS, type LabelStatus } from './release-catalog.constants';
 import { ApiError } from '@/utils/ApiError';
 import { ensureLabelOwnershipBackfill, type LabelAccessActor } from '@/utils/labelOwnership';
@@ -38,6 +40,22 @@ async function listArtists(query: CatalogListQueryDto): Promise<IReleaseArtist[]
     filter.name = { $regex: query.search.trim(), $options: 'i' };
   }
   return ReleaseArtistModel.find(filter).sort({ name: 1 }).limit(query.limit).exec();
+}
+
+async function listLanguages(query: CatalogListQueryDto): Promise<IReleaseLanguage[]> {
+  const filter: Record<string, unknown> = {};
+  if (query.search?.trim()) {
+    filter.name = { $regex: query.search.trim(), $options: 'i' };
+  }
+  return ReleaseLanguageModel.find(filter).sort({ sortOrder: 1, name: 1 }).limit(query.limit).exec();
+}
+
+async function listGenres(query: CatalogListQueryDto): Promise<IReleaseGenre[]> {
+  const filter: Record<string, unknown> = {};
+  if (query.search?.trim()) {
+    filter.name = { $regex: query.search.trim(), $options: 'i' };
+  }
+  return ReleaseGenreModel.find(filter).sort({ sortOrder: 1, name: 1 }).limit(query.limit).exec();
 }
 
 async function listLabels(query: CatalogListQueryDto, actor: CatalogActor): Promise<IReleaseLabel[]> {
@@ -173,6 +191,8 @@ async function updateLabelStatus(
 
 export const releaseCatalogService = {
   listArtists,
+  listLanguages,
+  listGenres,
   listLabels,
   listLabelsManage,
   createArtist,
