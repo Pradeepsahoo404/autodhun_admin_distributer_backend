@@ -497,3 +497,85 @@ export const buildLabelTransferEmail = ({
     text: buildWhiteEmailText(layoutOptions),
   };
 };
+
+interface SupportTicketCreatedEmailOptions {
+  recipientName: string;
+  ticketNumber: number;
+  subjectLine: string;
+  ticketType: string;
+  creatorName: string;
+  dashboardUrl: string;
+}
+
+interface SupportTicketStatusUpdatedEmailOptions {
+  recipientName: string;
+  ticketNumber: number;
+  subjectLine: string;
+  statusLabel: string;
+  resolutionNote?: string;
+  dashboardUrl: string;
+}
+
+export const buildSupportTicketCreatedEmail = ({
+  recipientName,
+  ticketNumber,
+  subjectLine,
+  ticketType,
+  creatorName,
+  dashboardUrl,
+}: SupportTicketCreatedEmailOptions): { subject: string; html: string; text: string } => {
+  const safeSubject = escapeHtml(subjectLine);
+  const subject = `Autodhun — New support request #${ticketNumber}`;
+
+  const layoutOptions: WhiteEmailLayoutOptions = {
+    recipientName,
+    paragraphs: [
+      `<strong>${escapeHtml(creatorName)}</strong> submitted a new support request that needs your attention.`,
+      `Subject: <strong>${safeSubject}</strong>`,
+    ],
+    noteBlock: [`Ticket: #${ticketNumber}`, `Type: ${ticketType}`, `Subject: ${subjectLine}`].join('\n'),
+    instruction: 'Please sign in to review and resolve this support request.',
+    ctaLabel: 'View support request',
+    ctaUrl: dashboardUrl,
+  };
+
+  return {
+    subject,
+    html: buildWhiteEmailLayout(layoutOptions),
+    text: buildWhiteEmailText(layoutOptions),
+  };
+};
+
+export const buildSupportTicketStatusUpdatedEmail = ({
+  recipientName,
+  ticketNumber,
+  subjectLine,
+  statusLabel,
+  resolutionNote,
+  dashboardUrl,
+}: SupportTicketStatusUpdatedEmailOptions): { subject: string; html: string; text: string } => {
+  const safeSubject = escapeHtml(subjectLine);
+  const subject = `Autodhun — Support request #${ticketNumber} updated to ${statusLabel}`;
+
+  const noteLines = [`Ticket: #${ticketNumber}`, `Subject: ${subjectLine}`, `Status: ${statusLabel}`];
+  if (resolutionNote?.trim()) {
+    noteLines.push(`Resolution note: ${resolutionNote.trim()}`);
+  }
+
+  const layoutOptions: WhiteEmailLayoutOptions = {
+    recipientName,
+    paragraphs: [
+      `Your support request <strong>${safeSubject}</strong> has been updated to <strong>${escapeHtml(statusLabel)}</strong>.`,
+    ],
+    noteBlock: noteLines.join('\n'),
+    instruction: 'Please sign in to view the latest update on your support request.',
+    ctaLabel: 'View support request',
+    ctaUrl: dashboardUrl,
+  };
+
+  return {
+    subject,
+    html: buildWhiteEmailLayout(layoutOptions),
+    text: buildWhiteEmailText(layoutOptions),
+  };
+};

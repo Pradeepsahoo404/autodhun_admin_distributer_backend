@@ -54,6 +54,7 @@ export const DEPRECATED_MODULE_SLUGS = [
   'publishing',
   'ai-studio',
   'sync-licensing',
+  'create-support-ticket',
 ] as const;
 
 export const DEFAULT_MODULES: ModuleSeed[] = [
@@ -182,5 +183,5 @@ export const ADMIN_DEFAULT_MODULE_SLUGS = [
   'help-support',
 ] as const;
 
-/** Root modules where Admin also gets create / update / delete by default. */
-export const ADMIN_DEFAULT_CRUD_MODULE_SLUGS = ['legal', 'release', 'channels'] as const;
+/** Root modules where Admin also gets create / update / delete by default. Super Admin can change these in Permissions. */
+export const ADMIN_DEFAULT_CRUD_MODULE_SLUGS = ['legal', 'release', 'channels', 'help-support'] as const;

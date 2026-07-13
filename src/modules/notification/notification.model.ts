@@ -11,6 +11,8 @@ export const NOTIFICATION_TYPE = {
   LABEL_TRANSFERRED: 'label_transferred',
   CHANNEL_ENTRY_CREATED: 'channel_entry_created',
   CHANNEL_STATUS_UPDATED: 'channel_status_updated',
+  SUPPORT_TICKET_CREATED: 'support_ticket_created',
+  SUPPORT_TICKET_STATUS_UPDATED: 'support_ticket_status_updated',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICATION_TYPE];

@@ -23,6 +23,7 @@ import { labelTransferRoutes } from '@/modules/label-transfer/label-transfer.rou
 import { labelUpdateRoutes } from '@/modules/label-update/label-update.routes';
 import { channelRoutes } from '@/modules/channel/channel.routes';
 import { channelLinkingRoutes } from '@/modules/channel-linking/channel-linking.routes';
+import { supportTicketRoutes } from '@/modules/support-ticket/support-ticket.routes';
 
 const router = Router();
 
@@ -56,5 +57,6 @@ router.use('/label-transfers', labelTransferRoutes);
 router.use('/label-updates', labelUpdateRoutes);
 router.use('/channels', channelRoutes);
 router.use('/channel-linking', channelLinkingRoutes);
+router.use('/support-tickets', supportTicketRoutes);
 
 export const apiRouter = router;

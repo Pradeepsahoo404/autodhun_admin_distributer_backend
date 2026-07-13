@@ -8,6 +8,10 @@ import {
   startChannelLinkingAutoRejectCron,
   stopChannelLinkingAutoRejectCron,
 } from '@/cron/channelLinkingAutoRejectCron';
+import {
+  startSupportTicketAutoCloseCron,
+  stopSupportTicketAutoCloseCron,
+} from '@/cron/supportTicketAutoCloseCron';
 
 const bootstrap = async (): Promise<void> => {
   await connectDatabase();
@@ -18,6 +22,7 @@ const bootstrap = async (): Promise<void> => {
     logger.info(`API base path: ${env.API_PREFIX}`);
     startAutoDeleteCron();
     startChannelLinkingAutoRejectCron();
+    startSupportTicketAutoCloseCron();
   });
 
   const shutdown = async (signal: string): Promise<void> => {
@@ -25,6 +30,7 @@ const bootstrap = async (): Promise<void> => {
     server.close(async () => {
       stopAutoDeleteCron();
       stopChannelLinkingAutoRejectCron();
+      stopSupportTicketAutoCloseCron();
       await disconnectDatabase();
       process.exit(0);
     });
