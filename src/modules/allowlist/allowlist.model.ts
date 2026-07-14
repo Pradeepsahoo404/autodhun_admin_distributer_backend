@@ -1,5 +1,4 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import { tenantIdField } from '@/utils/tenantFields';
 
 export const ALLOWLIST_STATUS = {
   ACTIVE: 'active',
@@ -14,7 +13,6 @@ export interface IAllowlist extends Document {
   labelName: string;
   channelLink: string;
   status: AllowlistStatus;
-  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -31,7 +29,6 @@ const allowlistSchema = new Schema<IAllowlist>(
       default: ALLOWLIST_STATUS.IN_PROGRESS,
       index: true,
     },
-    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

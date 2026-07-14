@@ -1,5 +1,4 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import { tenantIdField } from '@/utils/tenantFields';
 
 export const CHANNEL_LINKING_STATUS = {
   IN_PROCESS: 'in_process',
@@ -24,7 +23,6 @@ export interface IChannelLinking extends Document {
   totalViews90Days: number;
   status: ChannelLinkingStatus;
   autoRejectAt?: Date | null;
-  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -44,7 +42,6 @@ const channelLinkingSchema = new Schema<IChannelLinking>(
       index: true,
     },
     autoRejectAt: { type: Date, default: null, index: true },
-    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

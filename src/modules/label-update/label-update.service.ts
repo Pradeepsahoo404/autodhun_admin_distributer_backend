@@ -6,9 +6,10 @@ import { LabelUpdateListQueryDto } from './label-update.validator';
 import { PaginatedResult } from '@/types';
 import { ApiError } from '@/utils/ApiError';
 import { buildLabelUpdateEmail, sendMail } from '@/utils/email';
-import { tenantScopeFilter, type TenantActor } from '@/utils/tenantScope';
-
-type Actor = TenantActor;
+interface Actor {
+  id: string;
+  isSuperAdmin: boolean;
+}
 
 interface RecordLabelUpdateInput {
   labelId: string;
@@ -16,7 +17,6 @@ interface RecordLabelUpdateInput {
   newName: string;
   ownerId: string;
   updatedById: string;
-  tenantId?: string | null;
 }
 
 class LabelUpdateService {
@@ -29,7 +29,6 @@ class LabelUpdateService {
       newName: input.newName.trim(),
       owner: input.ownerId,
       updatedBy: input.updatedById,
-      ...(input.tenantId ? { tenantId: input.tenantId } : {}),
     });
 
     await this.notifyOwnerByEmail(input);
@@ -71,7 +70,7 @@ class LabelUpdateService {
       throw ApiError.forbidden('Only Super Admin can view label update history');
     }
 
-    const filter: Record<string, unknown> = { ...tenantScopeFilter(actor) };
+    const filter: Record<string, unknown> = {};
 
     if (query.search?.trim()) {
       const regex = { $regex: query.search.trim(), $options: 'i' };

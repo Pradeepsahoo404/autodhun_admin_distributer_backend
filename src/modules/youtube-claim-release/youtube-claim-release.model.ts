@@ -1,5 +1,4 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import { tenantIdField } from '@/utils/tenantFields';
 
 export const CLAIM_RELEASE_STATUS = {
   ACTIVE: 'active',
@@ -16,7 +15,6 @@ export interface IYoutubeClaimRelease extends Document {
   youtubeLink: string;
   isrcCode: string;
   status: ClaimReleaseStatus;
-  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -35,7 +33,6 @@ const youtubeClaimReleaseSchema = new Schema<IYoutubeClaimRelease>(
       default: CLAIM_RELEASE_STATUS.IN_PROGRESS,
       index: true,
     },
-    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

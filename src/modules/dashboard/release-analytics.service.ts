@@ -3,8 +3,7 @@ import {
   MUSIC_RELEASE_STATUS,
   type MusicReleaseStatus,
 } from '@/modules/music-release/music-release.constants';
-import { isElevatedRole } from '@/utils/roles';
-import { createdByFeatureScope, tenantScopeFilter, type TenantActor } from '@/utils/tenantScope';
+import { ROLES } from '@/constants';
 
 const DASHBOARD_RELEASE_STATUSES: MusicReleaseStatus[] = [
   MUSIC_RELEASE_STATUS.IN_REVIEW,
@@ -43,20 +42,6 @@ export interface ReleaseAnalyticsBundle {
 interface AnalyticsActor {
   userId: string;
   roleSlug: string;
-  tenantId: string | null;
-  isMasterAdmin?: boolean;
-  isSuperAdmin?: boolean;
-}
-
-function toTenantActor(actor: AnalyticsActor): TenantActor {
-  const elevated = isElevatedRole(actor.roleSlug) || Boolean(actor.isSuperAdmin);
-  return {
-    id: actor.userId,
-    role: actor.roleSlug,
-    isSuperAdmin: elevated,
-    isMasterAdmin: actor.isMasterAdmin,
-    tenantId: actor.tenantId,
-  };
 }
 
 function buildCounts(raw: Record<string, number>): ReleaseStatusCount[] {
@@ -76,12 +61,11 @@ class ReleaseAnalyticsService {
     actor: AnalyticsActor,
     options: { includeAdmin: boolean; includeContentDelivery: boolean },
   ): Promise<ReleaseAnalyticsBundle> {
-    const tenantActor = toTenantActor(actor);
-    const isSuperAdmin = tenantActor.isSuperAdmin;
+    const isSuperAdmin = actor.roleSlug === ROLES.SUPER_ADMIN;
 
     let admin: ReleaseAnalytics | null = null;
     if (options.includeAdmin && !isSuperAdmin) {
-      const raw = await musicReleaseRepository.countByStatus(createdByFeatureScope(tenantActor));
+      const raw = await musicReleaseRepository.countByStatus({ createdBy: actor.userId });
       const counts = buildCounts(raw);
       admin = {
         variant: 'admin',
@@ -93,7 +77,7 @@ class ReleaseAnalyticsService {
 
     let contentDelivery: ReleaseAnalytics | null = null;
     if (options.includeContentDelivery && isSuperAdmin) {
-      const raw = await musicReleaseRepository.countByStatus(tenantScopeFilter(tenantActor));
+      const raw = await musicReleaseRepository.countByStatus({});
       const counts = buildCounts(raw);
       contentDelivery = {
         variant: 'content-delivery',

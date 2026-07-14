@@ -1,9 +1,11 @@
+import { ROLES, USER_STATUS } from '@/constants';
 import {
   buildIssuesEntrySummary,
   ISSUES_MODULES,
   IssuesModuleSlug,
 } from '@/constants/issuesModules';
-import { findElevatedRecipientIds } from '@/utils/elevatedRecipients';
+import { roleRepository } from '@/modules/role/role.repository';
+import { UserModel } from '@/modules/user/user.model';
 import { NOTIFICATION_TYPE } from './notification.model';
 import { notificationRepository } from './notification.repository';
 import { logger } from '@/config/logger';
@@ -12,7 +14,6 @@ interface Actor {
   id: string;
   isSuperAdmin: boolean;
   name?: string;
-  tenantId?: string | null;
 }
 
 function formatOwnershipLabel(ownership: string): string {
@@ -22,8 +23,18 @@ function formatOwnershipLabel(ownership: string): string {
 }
 
 class IssuesNotificationsService {
-  private findSuperAdminIds(tenantId?: string | null): Promise<string[]> {
-    return findElevatedRecipientIds(tenantId);
+  private async findSuperAdminIds(): Promise<string[]> {
+    const role = await roleRepository.findBySlug(ROLES.SUPER_ADMIN);
+    if (!role) return [];
+
+    const users = await UserModel.find({
+      role: role._id,
+      status: USER_STATUS.ACTIVE,
+    })
+      .select('_id')
+      .exec();
+
+    return users.map((u) => u._id.toString());
   }
 
   private buildRoute(moduleSlug: IssuesModuleSlug, entryId: string): string {
@@ -74,7 +85,7 @@ class IssuesNotificationsService {
       const summary = buildIssuesEntrySummary(moduleSlug, { ...entry, ownership });
       const ownershipLabel = formatOwnershipLabel(ownership);
 
-      const superAdminIds = await this.findSuperAdminIds(actor.tenantId);
+      const superAdminIds = await this.findSuperAdminIds();
       if (superAdminIds.length === 0) return;
 
       const payloads = superAdminIds.map((recipientId) => ({

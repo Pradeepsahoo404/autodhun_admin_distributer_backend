@@ -1,5 +1,4 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import { tenantIdField } from '@/utils/tenantFields';
 
 export const OAC_STATUS = {
   ACTIVE: 'active',
@@ -16,7 +15,6 @@ export interface IOac extends Document {
   artistChannelTopicLink: string;
   isrcCode: string;
   status: OacStatus;
-  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -35,7 +33,6 @@ const oacSchema = new Schema<IOac>(
       default: OAC_STATUS.IN_PROGRESS,
       index: true,
     },
-    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

@@ -1,11 +1,5 @@
 import { youtubeClaimReleaseRepository } from './youtube-claim-release.repository';
 import { ApiError } from '@/utils/ApiError';
-import {
-  assertFeatureAccess,
-  createdByFeatureScope,
-  requireWriteTenantId,
-  type TenantActor,
-} from '@/utils/tenantScope';
 import { CLAIM_RELEASE_STATUS, IYoutubeClaimRelease } from './youtube-claim-release.model';
 import { PaginatedResult } from '@/types';
 import {
@@ -20,7 +14,22 @@ import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
 import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
-type Actor = TenantActor;
+interface Actor {
+  id: string;
+  isSuperAdmin: boolean;
+}
+
+function assertOwnership(item: IYoutubeClaimRelease, actor: Actor): void {
+  if (actor.isSuperAdmin) return;
+  const createdBy = item.createdBy as unknown;
+  const ownerId =
+    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
+      ? String((createdBy as { _id: { toString(): string } })._id)
+      : String(createdBy);
+  if (ownerId !== actor.id) {
+    throw ApiError.forbidden('You can only modify your own claim releases');
+  }
+}
 
 function escapeCsv(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
@@ -41,7 +50,7 @@ function assertLabelsMatch(sender: string, receiver: string): void {
 
 class YoutubeClaimReleaseService {
   private scope(actor: Actor) {
-    return createdByFeatureScope(actor);
+    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IYoutubeClaimRelease>> {
@@ -51,7 +60,7 @@ class YoutubeClaimReleaseService {
   async getById(id: string, actor: Actor): Promise<IYoutubeClaimRelease> {
     const item = await youtubeClaimReleaseRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Claim release not found');
-    assertFeatureAccess(actor, item, 'createdBy');
+    assertOwnership(item, actor);
     return item;
   }
 
@@ -60,7 +69,6 @@ class YoutubeClaimReleaseService {
     await assertLabelsAccessible(actor, dto.senderLabelName, dto.receiverLabelName);
 
     const created = await youtubeClaimReleaseRepository.create({
-      tenantId: requireWriteTenantId(actor) as never,
       ...dto,
       status: CLAIM_RELEASE_STATUS.IN_PROGRESS,
       createdBy: actor.id as never,
@@ -79,7 +87,7 @@ class YoutubeClaimReleaseService {
   ): Promise<IYoutubeClaimRelease> {
     const item = await youtubeClaimReleaseRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Claim release not found');
-    assertFeatureAccess(actor, item, 'createdBy');
+    assertOwnership(item, actor);
 
     const sender = dto.senderLabelName ?? item.senderLabelName;
     const receiver = dto.receiverLabelName ?? item.receiverLabelName;
@@ -101,7 +109,6 @@ class YoutubeClaimReleaseService {
 
     const item = await youtubeClaimReleaseRepository.findById(id);
     if (!item) throw ApiError.notFound('Claim release not found');
-    assertFeatureAccess(actor, item, 'createdBy');
 
     await youtubeClaimReleaseRepository.updateById(id, {
       status: dto.status,
@@ -122,7 +129,7 @@ class YoutubeClaimReleaseService {
   async remove(id: string, actor: Actor): Promise<void> {
     const item = await youtubeClaimReleaseRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Claim release not found');
-    assertFeatureAccess(actor, item, 'createdBy');
+    assertOwnership(item, actor);
     await youtubeClaimReleaseRepository.deleteById(id);
   }
 

@@ -1,11 +1,5 @@
 import { profileLinkingRepository } from './profile-linking.repository';
 import { ApiError } from '@/utils/ApiError';
-import {
-  assertFeatureAccess,
-  createdByFeatureScope,
-  requireWriteTenantId,
-  type TenantActor,
-} from '@/utils/tenantScope';
 import { IProfileLinking, PROFILE_LINKING_STATUS } from './profile-linking.model';
 import { PaginatedResult } from '@/types';
 import {
@@ -19,7 +13,22 @@ import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
 import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
-type Actor = TenantActor;
+interface Actor {
+  id: string;
+  isSuperAdmin: boolean;
+}
+
+function assertOwnership(item: IProfileLinking, actor: Actor): void {
+  if (actor.isSuperAdmin) return;
+  const createdBy = item.createdBy as unknown;
+  const ownerId =
+    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
+      ? String((createdBy as { _id: { toString(): string } })._id)
+      : String(createdBy);
+  if (ownerId !== actor.id) {
+    throw ApiError.forbidden('You can only modify your own profile linking entries');
+  }
+}
 
 function escapeCsv(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
@@ -34,7 +43,7 @@ function formatDateTime(date: Date): string {
 
 class ProfileLinkingService {
   private scope(actor: Actor) {
-    return createdByFeatureScope(actor);
+    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IProfileLinking>> {
@@ -44,7 +53,7 @@ class ProfileLinkingService {
   async getById(id: string, actor: Actor): Promise<IProfileLinking> {
     const item = await profileLinkingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Profile linking entry not found');
-    assertFeatureAccess(actor, item, 'createdBy');
+    assertOwnership(item, actor);
     return item;
   }
 
@@ -52,7 +61,6 @@ class ProfileLinkingService {
     await assertLabelsAccessible(actor, dto.labelName);
 
     const created = await profileLinkingRepository.create({
-      tenantId: requireWriteTenantId(actor) as never,
       ...dto,
       status: PROFILE_LINKING_STATUS.IN_PROGRESS,
       createdBy: actor.id as never,
@@ -71,7 +79,7 @@ class ProfileLinkingService {
   ): Promise<IProfileLinking> {
     const item = await profileLinkingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Profile linking entry not found');
-    assertFeatureAccess(actor, item, 'createdBy');
+    assertOwnership(item, actor);
 
     await assertLabelsAccessible(actor, dto.labelName);
 
@@ -110,7 +118,7 @@ class ProfileLinkingService {
   async remove(id: string, actor: Actor): Promise<void> {
     const item = await profileLinkingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Profile linking entry not found');
-    assertFeatureAccess(actor, item, 'createdBy');
+    assertOwnership(item, actor);
     await profileLinkingRepository.deleteById(id);
   }
 

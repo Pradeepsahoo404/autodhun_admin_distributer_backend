@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { requestActor } from '@/utils/requestActor';
 import { contentIdService } from './content-id.service';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { sendSuccess } from '@/utils/ApiResponse';
@@ -7,7 +6,10 @@ import { ExportQueryDto, ListQueryDto } from './content-id.validator';
 
 class ContentIdController {
   list = asyncHandler(async (req: Request, res: Response) => {
-    const result = await contentIdService.list(req.query as unknown as ListQueryDto, requestActor(req));
+    const result = await contentIdService.list(req.query as unknown as ListQueryDto, {
+      id: req.user!.id,
+      isSuperAdmin: req.user!.isSuperAdmin,
+    });
     sendSuccess(res, result.items, 'Content ID entries fetched', 200, {
       total: result.total,
       page: result.page,
@@ -17,32 +19,50 @@ class ContentIdController {
   });
 
   getById = asyncHandler(async (req: Request, res: Response) => {
-    const item = await contentIdService.getById(req.params.id, requestActor(req));
+    const item = await contentIdService.getById(req.params.id, {
+      id: req.user!.id,
+      isSuperAdmin: req.user!.isSuperAdmin,
+    });
     sendSuccess(res, item, 'Content ID entry fetched');
   });
 
   create = asyncHandler(async (req: Request, res: Response) => {
-    const item = await contentIdService.create(req.body, requestActor(req));
+    const item = await contentIdService.create(req.body, {
+      id: req.user!.id,
+      isSuperAdmin: req.user!.isSuperAdmin,
+    });
     sendSuccess(res, item, 'Content ID entry created', 201);
   });
 
   update = asyncHandler(async (req: Request, res: Response) => {
-    const item = await contentIdService.update(req.params.id, req.body, requestActor(req));
+    const item = await contentIdService.update(req.params.id, req.body, {
+      id: req.user!.id,
+      isSuperAdmin: req.user!.isSuperAdmin,
+    });
     sendSuccess(res, item, 'Content ID entry updated');
   });
 
   updateStatus = asyncHandler(async (req: Request, res: Response) => {
-    const item = await contentIdService.updateStatus(req.params.id, req.body, requestActor(req));
+    const item = await contentIdService.updateStatus(req.params.id, req.body, {
+      id: req.user!.id,
+      isSuperAdmin: req.user!.isSuperAdmin,
+    });
     sendSuccess(res, item, 'Status updated');
   });
 
   remove = asyncHandler(async (req: Request, res: Response) => {
-    await contentIdService.remove(req.params.id, requestActor(req));
+    await contentIdService.remove(req.params.id, {
+      id: req.user!.id,
+      isSuperAdmin: req.user!.isSuperAdmin,
+    });
     sendSuccess(res, null, 'Content ID entry deleted');
   });
 
   exportCsv = asyncHandler(async (req: Request, res: Response) => {
-    const csv = await contentIdService.exportCsv(req.query as unknown as ExportQueryDto, requestActor(req));
+    const csv = await contentIdService.exportCsv(req.query as unknown as ExportQueryDto, {
+      id: req.user!.id,
+      isSuperAdmin: req.user!.isSuperAdmin,
+    });
 
     const filename = `content-id-${new Date().toISOString().slice(0, 10)}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

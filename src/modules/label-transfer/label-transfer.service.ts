@@ -11,11 +11,14 @@ import { ApiError } from '@/utils/ApiError';
 import { buildLabelTransferEmail, sendMail } from '@/utils/email';
 import { ensureLabelOwnershipBackfill, findActiveAdminUsers } from '@/utils/labelOwnership';
 import { logger } from '@/config/logger';
-import { assertTenantAccess, requireWriteTenantId, tenantScopeFilter, type TenantActor } from '@/utils/tenantScope';
 import { TransferLabelDto, LabelTransferListQueryDto } from './label-transfer.validator';
 import { PaginatedResult } from '@/types';
 
-type Actor = TenantActor;
+interface Actor {
+  id: string;
+  isSuperAdmin: boolean;
+  name?: string;
+}
 
 export interface LabelTransferOverviewLabel {
   id: string;
@@ -41,19 +44,12 @@ class LabelTransferService {
     const adminRole = await roleRepository.findBySlug(ROLES.ADMIN);
     if (!adminRole) return { admins: [] };
 
-    const tenant = tenantScopeFilter(actor);
-    const adminFilter: Record<string, unknown> = {
-      role: adminRole._id,
-      status: USER_STATUS.ACTIVE,
-      ...tenant,
-    };
-
     const [admins, labels] = await Promise.all([
-      UserModel.find(adminFilter)
+      UserModel.find({ role: adminRole._id, status: USER_STATUS.ACTIVE })
         .select('name email')
         .sort({ name: 1 })
         .lean(),
-      ReleaseLabelModel.find({ status: LABEL_STATUS.ACTIVE, ...tenant })
+      ReleaseLabelModel.find({ status: LABEL_STATUS.ACTIVE })
         .select('name ownedBy createdAt')
         .sort({ name: 1 })
         .lean(),
@@ -93,7 +89,6 @@ class LabelTransferService {
 
     const label = await ReleaseLabelModel.findById(dto.labelId).exec();
     if (!label) throw ApiError.notFound('Label not found');
-    assertTenantAccess(actor, label.tenantId ? String(label.tenantId) : null);
     if (label.status !== LABEL_STATUS.ACTIVE) {
       throw ApiError.badRequest('Only active labels can be transferred');
     }
@@ -101,17 +96,12 @@ class LabelTransferService {
     const adminRole = await roleRepository.findBySlug(ROLES.ADMIN);
     if (!adminRole) throw ApiError.badRequest('Admin role is not configured');
 
-    const recipientFilter: Record<string, unknown> = {
+    const recipient = await UserModel.findOne({
       _id: dto.toUserId,
       role: adminRole._id,
       status: USER_STATUS.ACTIVE,
-    };
-    if (actor.tenantId) {
-      recipientFilter.tenantId = actor.tenantId;
-    }
-
-    const recipient = await UserModel.findOne(recipientFilter)
-      .select('name email tenantId')
+    })
+      .select('name email')
       .exec();
 
     if (!recipient) throw ApiError.badRequest('Recipient must be an active Admin user');
@@ -129,17 +119,12 @@ class LabelTransferService {
     label.ownedBy = recipient._id;
     await label.save();
 
-    const tenantId = label.tenantId
-      ? String(label.tenantId)
-      : requireWriteTenantId(actor);
-
     await LabelTransferModel.create({
       label: label._id,
       labelName: label.name,
       fromUser: fromUserId,
       toUser: recipient._id,
       transferredBy: actor.id,
-      tenantId,
     });
 
     const recipientName = recipient.name?.trim() || recipient.email;
@@ -193,7 +178,7 @@ class LabelTransferService {
       throw ApiError.forbidden('Only Super Admin can list transfer recipients');
     }
 
-    return findActiveAdminUsers(actor.tenantId);
+    return findActiveAdminUsers();
   }
 
   async listHistory(
@@ -204,7 +189,7 @@ class LabelTransferService {
       throw ApiError.forbidden('Only Super Admin can view label transfer history');
     }
 
-    const filter: Record<string, unknown> = { ...tenantScopeFilter(actor) };
+    const filter: Record<string, unknown> = {};
 
     if (query.search?.trim()) {
       const regex = { $regex: query.search.trim(), $options: 'i' };

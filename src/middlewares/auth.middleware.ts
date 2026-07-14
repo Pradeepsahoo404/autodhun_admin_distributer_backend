@@ -3,10 +3,8 @@ import { verifyAccessToken } from '@/utils/jwt';
 import { ApiError } from '@/utils/ApiError';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { userRepository } from '@/modules/user/user.repository';
-import { tenantService } from '@/modules/tenant/tenant.service';
-import { USER_STATUS, USER_INACTIVE_MESSAGE } from '@/constants';
+import { ROLES, USER_STATUS, USER_INACTIVE_MESSAGE } from '@/constants';
 import { IRole } from '@/modules/role/role.model';
-import { isElevatedRole, isMasterAdminRole } from '@/utils/roles';
 
 /**
  * Verifies the Bearer access token, re-validates the user against the DB
@@ -26,9 +24,6 @@ export const authenticate: RequestHandler = asyncHandler(async (req, _res, next)
   if (!user) throw ApiError.unauthorized('User no longer exists');
   if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
 
-  const tenantId = user.tenantId ? user.tenantId.toString() : null;
-  await tenantService.assertTenantActive(tenantId);
-
   const role = user.role as unknown as IRole;
   req.user = {
     id: user._id.toString(),
@@ -36,10 +31,7 @@ export const authenticate: RequestHandler = asyncHandler(async (req, _res, next)
     name: user.name,
     roleId: role._id.toString(),
     role: role.slug,
-    isMasterAdmin: isMasterAdminRole(role.slug),
-    // Elevated bridge: Master + tenant Super Admin keep privilege flags.
-    isSuperAdmin: isElevatedRole(role.slug),
-    tenantId,
+    isSuperAdmin: role.slug === ROLES.SUPER_ADMIN,
   };
   req.token = payload;
   next();

@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
-import { requestActor } from '@/utils/requestActor';
 import { labelUpdateService } from './label-update.service';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { sendSuccess } from '@/utils/ApiResponse';
 import { LabelUpdateListQueryDto } from './label-update.validator';
 
 function updateActor(req: Request) {
-  return requestActor(req);
+  return { id: req.user!.id, isSuperAdmin: req.user!.isSuperAdmin };
 }
 
 class LabelUpdateController {

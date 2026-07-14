@@ -2,11 +2,7 @@ import type { JwtPayload } from '@/utils/jwt';
 
 /**
  * Authenticated principal attached to the request by the auth middleware.
- *
- * Phase 2+: Master sets `isMasterAdmin`. Master also sets `isSuperAdmin`
- * (elevated bridge) so permission/status actions that key off `isSuperAdmin`
- * keep working. Phase 6 splits data scoping via `tenantId` + tenantScope helpers;
- * the elevated bridge may remain for isSuperAdmin permission actions.
+ * `isSuperAdmin` short-circuits all permission checks downstream.
  */
 export interface AuthUser {
   id: string;
@@ -15,8 +11,6 @@ export interface AuthUser {
   roleId: string;
   role: string;
   isSuperAdmin: boolean;
-  isMasterAdmin: boolean;
-  tenantId: string | null;
 }
 
 declare global {

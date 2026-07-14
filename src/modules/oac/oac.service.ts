@@ -1,11 +1,5 @@
 import { oacRepository } from './oac.repository';
 import { ApiError } from '@/utils/ApiError';
-import {
-  assertFeatureAccess,
-  createdByFeatureScope,
-  requireWriteTenantId,
-  type TenantActor,
-} from '@/utils/tenantScope';
 import { IOac, OAC_STATUS } from './oac.model';
 import { PaginatedResult } from '@/types';
 import {
@@ -18,7 +12,22 @@ import {
 import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
 
-type Actor = TenantActor;
+interface Actor {
+  id: string;
+  isSuperAdmin: boolean;
+}
+
+function assertOwnership(item: IOac, actor: Actor): void {
+  if (actor.isSuperAdmin) return;
+  const createdBy = item.createdBy as unknown;
+  const ownerId =
+    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
+      ? String((createdBy as { _id: { toString(): string } })._id)
+      : String(createdBy);
+  if (ownerId !== actor.id) {
+    throw ApiError.forbidden('You can only modify your own OAC entries');
+  }
+}
 
 function escapeCsv(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
@@ -33,7 +42,7 @@ function formatDateTime(date: Date): string {
 
 class OacService {
   private scope(actor: Actor) {
-    return createdByFeatureScope(actor);
+    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IOac>> {
@@ -43,13 +52,12 @@ class OacService {
   async getById(id: string, actor: Actor): Promise<IOac> {
     const item = await oacRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('OAC entry not found');
-    assertFeatureAccess(actor, item, 'createdBy');
+    assertOwnership(item, actor);
     return item;
   }
 
   async create(dto: CreateOacDto, actor: Actor): Promise<IOac> {
     const created = await oacRepository.create({
-      tenantId: requireWriteTenantId(actor) as never,
       ...dto,
       status: OAC_STATUS.IN_PROGRESS,
       createdBy: actor.id as never,
@@ -64,7 +72,7 @@ class OacService {
   async update(id: string, dto: UpdateOacDto, actor: Actor): Promise<IOac> {
     const item = await oacRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('OAC entry not found');
-    assertFeatureAccess(actor, item, 'createdBy');
+    assertOwnership(item, actor);
 
     const updated = await oacRepository.updateById(id, {
       ...dto,
@@ -81,7 +89,6 @@ class OacService {
 
     const item = await oacRepository.findById(id);
     if (!item) throw ApiError.notFound('OAC entry not found');
-    assertFeatureAccess(actor, item, 'createdBy');
 
     await oacRepository.updateById(id, {
       status: dto.status,
@@ -97,7 +104,7 @@ class OacService {
   async remove(id: string, actor: Actor): Promise<void> {
     const item = await oacRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('OAC entry not found');
-    assertFeatureAccess(actor, item, 'createdBy');
+    assertOwnership(item, actor);
     await oacRepository.deleteById(id);
   }
 

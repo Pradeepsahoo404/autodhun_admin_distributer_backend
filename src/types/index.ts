@@ -7,7 +7,6 @@ export interface PaginationQuery {
   search?: string;
   status?: string;
   roleId?: string;
-  tenantId?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }

@@ -1,5 +1,4 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import { tenantIdField } from '@/utils/tenantFields';
 import { MUSIC_RELEASE_STATUS, type MusicReleaseStatus } from './music-release.constants';
 
 export interface IReleaseTrack {
@@ -56,7 +55,6 @@ export interface IMusicRelease extends Document {
     | 'only-meta-audio';
   status: MusicReleaseStatus;
   correctionReasons?: string[];
-  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -135,7 +133,6 @@ const musicReleaseSchema = new Schema<IMusicRelease>(
       index: true,
     },
     correctionReasons: { type: [String], default: [] },
-    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

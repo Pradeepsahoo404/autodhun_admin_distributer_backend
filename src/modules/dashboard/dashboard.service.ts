@@ -37,15 +37,8 @@ class DashboardService {
    * permissions. The frontend renders sidebar, cards and quick actions purely
    * from this response — no hardcoded role logic on the client.
    */
-  async getDashboard(
-    roleId: string,
-    roleSlug: string,
-    userId: string,
-    tenantId: string | null = null,
-    isMasterAdmin = false,
-    isSuperAdmin = false,
-  ): Promise<DashboardResponse> {
-    const modules = await permissionService.resolveForRole(roleId, roleSlug, tenantId);
+  async getDashboard(roleId: string, roleSlug: string, userId: string): Promise<DashboardResponse> {
+    const modules = await permissionService.resolveForRole(roleId, roleSlug);
 
     // Fast lookup map of slug -> action flags.
     const permMap = new Map<string, ResolvedModulePermission>();
@@ -85,16 +78,8 @@ class DashboardService {
       has(slug, 'view'),
     ) as RightsManagerModuleSlug[];
 
-    const analyticsActor = {
-      userId,
-      roleSlug,
-      tenantId,
-      isMasterAdmin,
-      isSuperAdmin,
-    };
-
     const rightsManagerAnalytics = await rightsManagerAnalyticsService.getAnalytics(
-      analyticsActor,
+      { userId, roleSlug },
       visibleRightsManagerSlugs,
     );
 
@@ -103,12 +88,12 @@ class DashboardService {
     ) as IssuesAnalyticsModuleSlug[];
 
     const issuesAnalytics = await issuesAnalyticsService.getAnalytics(
-      analyticsActor,
+      { userId, roleSlug },
       visibleIssuesSlugs,
     );
 
     const releaseAnalytics = await releaseAnalyticsService.getAnalytics(
-      analyticsActor,
+      { userId, roleSlug },
       {
         includeAdmin: has('create-new-release', 'view') || has('assets', 'view'),
         includeContentDelivery: has('content-delivery', 'view'),

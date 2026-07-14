@@ -7,8 +7,6 @@ export interface JwtPayload {
   sub: string; // user id
   email: string;
   role: string; // role slug
-  /** Present for tenant users; null/omitted for platform Super Admin. */
-  tenantId?: string | null;
   type: (typeof TOKEN_TYPE)[keyof typeof TOKEN_TYPE];
 }
 

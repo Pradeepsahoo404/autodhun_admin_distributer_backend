@@ -4,14 +4,7 @@ import { PaginatedResult } from '@/types';
 import { IUser } from '@/modules/user/user.model';
 import { userRepository } from '@/modules/user/user.repository';
 import { ROLES } from '@/constants';
-import { issuesNotificationsService } from '@/modules/notification/issues-notifications.service';
-import {
-  assertFeatureAccess,
-  assignedToFeatureScope,
-  isPlatformMaster,
-  requireWriteTenantId,
-  type TenantActor,
-} from '@/utils/tenantScope';
+import { issuesNotificationsService, resolveUserId } from '@/modules/notification/issues-notifications.service';
 import { ISSUES_ENTRY_STATUS } from './issues-entry.constants';
 import { IIssuesEntry } from './issues-entry.model';
 import { IssuesEntryRepository } from './issues-entry.repository';
@@ -24,7 +17,11 @@ import {
   UpdateIssuesEntryStatusDto,
 } from './issues-entry.validator';
 
-type Actor = TenantActor;
+interface Actor {
+  id: string;
+  isSuperAdmin: boolean;
+  name?: string;
+}
 
 export interface IssuesEntryModuleMeta {
   moduleSlug: IssuesModuleSlug;
@@ -56,7 +53,14 @@ function assertSuperAdmin(actor: Actor, message: string): void {
   }
 }
 
-async function assertAdminUser(userId: string, actor: Actor): Promise<void> {
+function assertAssignedAdmin(item: IIssuesEntry, actor: Actor): void {
+  const assignedId = resolveUserId(item.assignedTo);
+  if (!assignedId || assignedId !== actor.id) {
+    throw ApiError.forbidden('You can only update entries assigned to you');
+  }
+}
+
+async function assertAdminUser(userId: string): Promise<void> {
   const user = await userRepository.findByIdWithRole(userId);
   if (!user) throw ApiError.badRequest('Assigned admin not found');
 
@@ -64,13 +68,6 @@ async function assertAdminUser(userId: string, actor: Actor): Promise<void> {
   const slug = typeof role === 'object' && role?.slug ? role.slug : '';
   if (slug !== ROLES.ADMIN) {
     throw ApiError.badRequest('Assigned user must be an Admin');
-  }
-
-  if (!isPlatformMaster(actor)) {
-    const assigneeTenantId = user.tenantId ? String(user.tenantId) : null;
-    if (!actor.tenantId || !assigneeTenantId || actor.tenantId !== assigneeTenantId) {
-      throw ApiError.badRequest('Assigned admin must belong to your tenant');
-    }
   }
 }
 
@@ -81,7 +78,7 @@ export class IssuesEntryService {
   ) {}
 
   private scope(actor: Actor) {
-    return assignedToFeatureScope(actor);
+    return actor.isSuperAdmin ? {} : { assignedTo: actor.id };
   }
 
   private notFoundMessage(): string {
@@ -95,17 +92,20 @@ export class IssuesEntryService {
   async getById(id: string, actor: Actor): Promise<IIssuesEntry> {
     const item = await this.repository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound(this.notFoundMessage());
-    assertFeatureAccess(actor, item, 'assignedTo');
+
+    if (!actor.isSuperAdmin) {
+      assertAssignedAdmin(item, actor);
+    }
+
     return item;
   }
 
   async create(dto: CreateIssuesEntryDto, actor: Actor): Promise<IIssuesEntry> {
     assertSuperAdmin(actor, `Only Super Admin can create ${this.meta.pluralLabel.toLowerCase()}`);
-    await assertAdminUser(dto.assignedTo, actor);
+    await assertAdminUser(dto.assignedTo);
 
     const created = await this.repository.create({
       ...dto,
-      tenantId: requireWriteTenantId(actor) as never,
       status: ISSUES_ENTRY_STATUS.ACTIVE,
       ownership: '',
       createdBy: actor.id as never,
@@ -131,10 +131,9 @@ export class IssuesEntryService {
 
     const item = await this.repository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound(this.notFoundMessage());
-    assertFeatureAccess(actor, item, 'assignedTo');
 
     if (dto.assignedTo) {
-      await assertAdminUser(dto.assignedTo, actor);
+      await assertAdminUser(dto.assignedTo);
     }
 
     await this.repository.updateById(id, {
@@ -151,7 +150,6 @@ export class IssuesEntryService {
 
     const item = await this.repository.findById(id);
     if (!item) throw ApiError.notFound(this.notFoundMessage());
-    assertFeatureAccess(actor, item, 'assignedTo');
 
     await this.repository.updateById(id, {
       status: dto.status,
@@ -173,7 +171,7 @@ export class IssuesEntryService {
 
     const item = await this.repository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound(this.notFoundMessage());
-    assertFeatureAccess(actor, item, 'assignedTo');
+    assertAssignedAdmin(item, actor);
 
     await this.repository.updateById(id, {
       ownership: dto.ownership,
@@ -198,7 +196,6 @@ export class IssuesEntryService {
 
     const item = await this.repository.findById(id);
     if (!item) throw ApiError.notFound(this.notFoundMessage());
-    assertFeatureAccess(actor, item, 'assignedTo');
     await this.repository.deleteById(id);
   }
 

@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import { requestActor } from '@/utils/requestActor';
 import fs from 'fs/promises';
 import { musicReleaseService } from './music-release.service';
 import { asyncHandler } from '@/utils/asyncHandler';
@@ -18,9 +17,11 @@ import { buildBulkTemplateWorkbook } from './music-release-bulk';
 
 function releaseActor(req: Request) {
   return {
-    ...requestActor(req),
+    id: req.user!.id,
     roleId: req.user!.roleId,
     roleSlug: req.user!.role,
+    isSuperAdmin: req.user!.isSuperAdmin,
+    name: req.user!.name,
   };
 }
 

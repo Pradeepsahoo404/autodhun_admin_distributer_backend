@@ -13,8 +13,6 @@ import { AUTH_PROVIDER, OTP_PURPOSE, ROLES, USER_STATUS, USER_INACTIVE_MESSAGE }
 import { IUser } from '@/modules/user/user.model';
 import { IRole } from '@/modules/role/role.model';
 import { AuthResult, AuthTokens, AuthUserDto, PendingOtpResult, LoginResult, toAuthUserDto } from './auth.types';
-import { isElevatedRole } from '@/utils/roles';
-import { tenantService } from '@/modules/tenant/tenant.service';
 
 interface RegisterInput {
   firstName: string;
@@ -55,10 +53,6 @@ class AuthService {
   private resolveRoleSlug(user: IUser): string {
     const role = user.role as unknown as IRole | undefined;
     return role && typeof role === 'object' && 'slug' in role ? role.slug : '';
-  }
-
-  private async assertTenantForUser(user: IUser): Promise<void> {
-    await tenantService.assertTenantActive(user.tenantId ? user.tenantId.toString() : null);
   }
 
   private async getDefaultRole(): Promise<IRole> {
@@ -173,11 +167,9 @@ class AuthService {
     if (!user.emailVerified) throw ApiError.forbidden('Please verify your email before logging in');
     if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
 
-    await this.assertTenantForUser(user);
-
     await this.markTermsAccepted(user._id.toString());
 
-    if (isElevatedRole(this.resolveRoleSlug(user))) {
+    if (this.resolveRoleSlug(user) === ROLES.SUPER_ADMIN) {
       const updated = await userRepository.updateById(user._id.toString(), { lastLogin: new Date() });
       return this.buildAuthResult(updated as IUser);
     }
@@ -196,7 +188,6 @@ class AuthService {
     const user = await userRepository.findByEmail(email);
     if (!user) throw ApiError.notFound('Account not found');
     if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
-    await this.assertTenantForUser(user);
 
     await otpService.verify(user._id.toString(), otp, OTP_PURPOSE.LOGIN);
 
@@ -304,7 +295,6 @@ class AuthService {
     }
 
     if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
-    await this.assertTenantForUser(user);
     return this.buildAuthResult(user);
   }
 
@@ -313,7 +303,6 @@ class AuthService {
     const user = await userRepository.findByIdWithRole(userId);
     if (!user) throw ApiError.unauthorized('User no longer exists');
     if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
-    await this.assertTenantForUser(user);
     return toAuthUserDto(user, this.resolveRoleSlug(user));
   }
 
@@ -380,8 +369,8 @@ class AuthService {
       micrCode?: string;
     },
   ): Promise<AuthUserDto> {
-    if (isElevatedRole(roleSlug)) {
-      throw ApiError.forbidden('Bank details are not applicable for Master / Super Admin accounts');
+    if (roleSlug === ROLES.SUPER_ADMIN) {
+      throw ApiError.forbidden('Bank details are not applicable for Super Admin accounts');
     }
 
     const user = await userRepository.findByIdWithRole(userId);
@@ -423,13 +412,11 @@ class AuthService {
     const user = await userRepository.findByIdWithRole(payload.sub);
     if (!user) throw ApiError.unauthorized('User no longer exists');
     if (user.status !== USER_STATUS.ACTIVE) throw ApiError.forbidden(USER_INACTIVE_MESSAGE);
-    await this.assertTenantForUser(user);
 
     return issueTokenPair({
       sub: user._id.toString(),
       email: user.email,
       role: this.resolveRoleSlug(user),
-      tenantId: user.tenantId ? user.tenantId.toString() : null,
     });
   }
 
@@ -437,12 +424,7 @@ class AuthService {
     const populated = await userRepository.findByIdWithRole(user._id.toString());
     const target = populated ?? user;
     const roleSlug = this.resolveRoleSlug(target);
-    const tokens = issueTokenPair({
-      sub: target._id.toString(),
-      email: target.email,
-      role: roleSlug,
-      tenantId: target.tenantId ? target.tenantId.toString() : null,
-    });
+    const tokens = issueTokenPair({ sub: target._id.toString(), email: target.email, role: roleSlug });
     return { user: toAuthUserDto(target, roleSlug), tokens };
   }
 }

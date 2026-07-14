@@ -1,19 +1,8 @@
-/**
- * Canonical role slugs used throughout the RBAC layer.
- *
- * Hierarchy:
- *   MASTER_ADMIN  → platform owner (all tenants)
- *   SUPER_ADMIN   → tenant owner (one tenant; Phase 3+)
- *   ADMIN         → tenant staff
- */
+/** Canonical role slugs used throughout the RBAC layer. */
 export const ROLES = {
-  MASTER_ADMIN: 'master-admin',
   SUPER_ADMIN: 'super-admin',
   ADMIN: 'admin',
 } as const;
-
-export { TENANT_STATUS, LEGACY_TENANT_SLUG, LEGACY_TENANT_NAME } from './tenant';
-export type { TenantStatus } from './tenant';
 
 export type RoleSlug = (typeof ROLES)[keyof typeof ROLES];
 
@@ -29,11 +18,6 @@ export type UserStatus = (typeof USER_STATUS)[keyof typeof USER_STATUS];
 /** Shown when a deactivated admin tries to sign in or use an existing session. */
 export const USER_INACTIVE_MESSAGE =
   'Your account is inactive. To make it active, please contact the Owner.';
-
-/** Tenant organization suspended by Master Admin. */
-export const TENANT_INACTIVE_MESSAGE =
-  'Your organization is inactive. Please contact the platform owner.';
-
 
 /** Role status — active roles can be assigned; inactive are hidden from assignment. */
 export const ROLE_STATUS = {

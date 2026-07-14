@@ -14,7 +14,6 @@ export const paginationQuerySchema = z.object({
   status: z.enum(['active', 'inactive', 'blocked']).optional(),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
-  tenantId: objectId.optional(),
 });
 
 export type PaginationQueryDto = z.infer<typeof paginationQuerySchema>;

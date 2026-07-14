@@ -58,8 +58,6 @@ export const inviteAdminSchema = z.object({
   lastName: optionalNameField('Last name'),
   email: z.string().email('Enter a valid email').toLowerCase(),
   personalMessage: z.string().trim().max(500, 'Message must be at most 500 characters').optional(),
-  /** Required when Master invites; ignored for tenant Super Admin (own tenant). */
-  tenantId: objectId.optional(),
 });
 
 export const resendInviteSchema = z.object({

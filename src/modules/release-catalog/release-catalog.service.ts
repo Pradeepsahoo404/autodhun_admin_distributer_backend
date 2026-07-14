@@ -6,11 +6,6 @@ import { LABEL_STATUS, type LabelStatus } from './release-catalog.constants';
 import { ApiError } from '@/utils/ApiError';
 import { ensureLabelOwnershipBackfill, type LabelAccessActor } from '@/utils/labelOwnership';
 import {
-  requireWriteTenantId,
-  tenantScopeFilter,
-  type TenantActor,
-} from '@/utils/tenantScope';
-import {
   CatalogListQueryDto,
   CreateCatalogNameDto,
   LabelManageQueryDto,
@@ -24,8 +19,9 @@ function normalizeName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-type CatalogActor = LabelAccessActor & Pick<TenantActor, 'tenantId' | 'isMasterAdmin' | 'role'>;
-type ManageActor = CatalogActor;
+interface CatalogActor extends LabelAccessActor {}
+
+interface ManageActor extends LabelAccessActor {}
 
 let statusBackfillPromise: Promise<void> | null = null;
 
@@ -39,13 +35,8 @@ async function ensureLabelStatusBackfill(): Promise<void> {
   await statusBackfillPromise;
 }
 
-async function listArtists(
-  query: CatalogListQueryDto,
-  actor?: CatalogActor,
-): Promise<IReleaseArtist[]> {
-  const filter: Record<string, unknown> = actor
-    ? { ...tenantScopeFilter(actor as TenantActor) }
-    : {};
+async function listArtists(query: CatalogListQueryDto): Promise<IReleaseArtist[]> {
+  const filter: Record<string, unknown> = {};
   if (query.search?.trim()) {
     filter.name = { $regex: query.search.trim(), $options: 'i' };
   }
@@ -73,7 +64,6 @@ async function listLabels(query: CatalogListQueryDto, actor: CatalogActor): Prom
   await ensureLabelStatusBackfill();
 
   const filter: Record<string, unknown> = {
-    ...tenantScopeFilter(actor as TenantActor),
     ownedBy: actor.id,
     status: LABEL_STATUS.ACTIVE,
   };
@@ -87,15 +77,12 @@ async function listLabels(query: CatalogListQueryDto, actor: CatalogActor): Prom
 
 async function listLabelsManage(
   query: LabelManageQueryDto,
-  actor: ManageActor,
+  _actor: ManageActor,
 ): Promise<PaginatedResult<IReleaseLabel>> {
   await ensureLabelOwnershipBackfill();
   await ensureLabelStatusBackfill();
 
-  const filter: Record<string, unknown> = {
-    ...tenantScopeFilter(actor as TenantActor),
-    status: query.status,
-  };
+  const filter: Record<string, unknown> = { status: query.status };
 
   if (query.search?.trim()) {
     filter.name = { $regex: query.search.trim(), $options: 'i' };
@@ -120,32 +107,25 @@ async function listLabelsManage(
   };
 }
 
-async function createArtist(dto: CreateCatalogNameDto, actor: CatalogActor): Promise<IReleaseArtist> {
+async function createArtist(dto: CreateCatalogNameDto, userId: string): Promise<IReleaseArtist> {
   const name = dto.name.trim();
   const normalizedName = normalizeName(name);
-  const tenantId = requireWriteTenantId(actor as TenantActor);
-  const existing = await ReleaseArtistModel.findOne({ normalizedName, tenantId }).exec();
+  const existing = await ReleaseArtistModel.findOne({ normalizedName }).exec();
   if (existing) throw ApiError.conflict('An artist with this name already exists');
 
   try {
-    return await ReleaseArtistModel.create({
-      name,
-      normalizedName,
-      tenantId,
-      createdBy: actor.id,
-    });
+    return await ReleaseArtistModel.create({ name, normalizedName, createdBy: userId });
   } catch {
-    const duplicate = await ReleaseArtistModel.findOne({ normalizedName, tenantId }).exec();
+    const duplicate = await ReleaseArtistModel.findOne({ normalizedName }).exec();
     if (duplicate) throw ApiError.conflict('An artist with this name already exists');
     throw ApiError.badRequest('Could not create artist');
   }
 }
 
-async function createLabel(dto: CreateCatalogNameDto, actor: CatalogActor): Promise<IReleaseLabel> {
+async function createLabel(dto: CreateCatalogNameDto, userId: string): Promise<IReleaseLabel> {
   const name = dto.name.trim();
   const normalizedName = normalizeName(name);
-  const tenantId = requireWriteTenantId(actor as TenantActor);
-  const existing = await ReleaseLabelModel.findOne({ normalizedName, tenantId }).exec();
+  const existing = await ReleaseLabelModel.findOne({ normalizedName }).exec();
   if (existing) throw ApiError.conflict('A label with this name already exists');
 
   try {
@@ -153,12 +133,11 @@ async function createLabel(dto: CreateCatalogNameDto, actor: CatalogActor): Prom
       name,
       normalizedName,
       status: LABEL_STATUS.ACTIVE,
-      tenantId,
-      createdBy: actor.id,
-      ownedBy: actor.id,
+      createdBy: userId,
+      ownedBy: userId,
     });
   } catch {
-    const duplicate = await ReleaseLabelModel.findOne({ normalizedName, tenantId }).exec();
+    const duplicate = await ReleaseLabelModel.findOne({ normalizedName }).exec();
     if (duplicate) throw ApiError.conflict('A label with this name already exists');
     throw ApiError.badRequest('Could not create label');
   }
@@ -173,10 +152,8 @@ async function updateLabel(id: string, dto: UpdateLabelDto, actor: ManageActor):
   const previousName = label.name;
   const name = dto.name.trim();
   const normalizedName = normalizeName(name);
-  const tenantId = label.tenantId ?? requireWriteTenantId(actor as TenantActor);
   const duplicate = await ReleaseLabelModel.findOne({
     normalizedName,
-    tenantId,
     _id: { $ne: label._id },
   }).exec();
 
@@ -193,7 +170,6 @@ async function updateLabel(id: string, dto: UpdateLabelDto, actor: ManageActor):
       newName: name,
       ownerId: label.ownedBy.toString(),
       updatedById: actor.id,
-      tenantId: label.tenantId ? String(label.tenantId) : null,
     });
   }
 
