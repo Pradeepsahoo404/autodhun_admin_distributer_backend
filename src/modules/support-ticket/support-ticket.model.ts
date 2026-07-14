@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { tenantIdField } from '@/utils/tenantFields';
 import {
   SUPPORT_TICKET_STATUS,
   SUPPORT_TICKET_CATEGORY,
@@ -18,6 +19,7 @@ export interface ISupportTicket extends Document {
   status: SupportTicketStatus;
   resolutionNote?: string;
   resolvedAt?: Date;
+  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -49,6 +51,7 @@ const supportTicketSchema = new Schema<ISupportTicket>(
     },
     resolutionNote: { type: String, trim: true, default: '' },
     resolvedAt: { type: Date, default: null, index: true },
+    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

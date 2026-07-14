@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { requestActor } from '@/utils/requestActor';
 import { releaseCatalogService } from './release-catalog.service';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { sendSuccess } from '@/utils/ApiResponse';
@@ -14,7 +15,7 @@ import {
 } from './release-catalog.validator';
 
 function catalogActor(req: Request) {
-  return { id: req.user!.id, isSuperAdmin: req.user!.isSuperAdmin };
+  return requestActor(req);
 }
 
 async function assertManageAccess(req: Request, status: string): Promise<void> {
@@ -50,7 +51,10 @@ async function assertLabelMutationAccess(req: Request, action: 'update' | 'delet
 
 class ReleaseCatalogController {
   listArtists = asyncHandler(async (req: Request, res: Response) => {
-    const items = await releaseCatalogService.listArtists(req.query as unknown as CatalogListQueryDto);
+    const items = await releaseCatalogService.listArtists(
+      req.query as unknown as CatalogListQueryDto,
+      catalogActor(req),
+    );
     sendSuccess(res, items, 'Artists fetched');
   });
 
@@ -65,7 +69,10 @@ class ReleaseCatalogController {
   });
 
   createArtist = asyncHandler(async (req: Request, res: Response) => {
-    const item = await releaseCatalogService.createArtist(req.body as CreateCatalogNameDto, req.user!.id);
+    const item = await releaseCatalogService.createArtist(
+      req.body as CreateCatalogNameDto,
+      catalogActor(req),
+    );
     sendSuccess(res, item, 'Artist saved', 201);
   });
 
@@ -78,7 +85,10 @@ class ReleaseCatalogController {
   });
 
   createLabel = asyncHandler(async (req: Request, res: Response) => {
-    const item = await releaseCatalogService.createLabel(req.body as CreateCatalogNameDto, req.user!.id);
+    const item = await releaseCatalogService.createLabel(
+      req.body as CreateCatalogNameDto,
+      catalogActor(req),
+    );
     sendSuccess(res, item, 'Label saved', 201);
   });
 

@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { tenantIdField } from '@/utils/tenantFields';
 
 export const CLAIM_RELEASE_STATUS = {
   ACTIVE: 'active',
@@ -15,6 +16,7 @@ export interface IFacebookClaimRelease extends Document {
   facebookPageLink: string;
   isrcCode: string;
   status: ClaimReleaseStatus;
+  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -33,6 +35,7 @@ const facebookClaimReleaseSchema = new Schema<IFacebookClaimRelease>(
       default: CLAIM_RELEASE_STATUS.IN_PROGRESS,
       index: true,
     },
+    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

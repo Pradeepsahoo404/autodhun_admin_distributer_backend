@@ -24,6 +24,8 @@ import { labelUpdateRoutes } from '@/modules/label-update/label-update.routes';
 import { channelRoutes } from '@/modules/channel/channel.routes';
 import { channelLinkingRoutes } from '@/modules/channel-linking/channel-linking.routes';
 import { supportTicketRoutes } from '@/modules/support-ticket/support-ticket.routes';
+import { tenantRoutes } from '@/modules/tenant/tenant.routes';
+import { masterRoutes } from '@/modules/master/master.routes';
 
 const router = Router();
 
@@ -58,5 +60,7 @@ router.use('/label-updates', labelUpdateRoutes);
 router.use('/channels', channelRoutes);
 router.use('/channel-linking', channelLinkingRoutes);
 router.use('/support-tickets', supportTicketRoutes);
+router.use('/tenants', tenantRoutes);
+router.use('/master', masterRoutes);
 
 export const apiRouter = router;

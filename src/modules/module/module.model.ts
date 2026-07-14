@@ -12,7 +12,7 @@ export interface IModule extends Document {
   group: string;
   parentSlug?: string;
   /** Which role(s) see this module branch in the sidebar. Set on root modules only. */
-  audience?: 'shared' | 'super-admin' | 'admin';
+  audience?: 'shared' | 'master-admin' | 'super-admin' | 'admin';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,7 +30,11 @@ const moduleSchema = new Schema<IModule>(
     // Sidebar section grouping: 'main' (product modules) or 'management' (admin tools).
     group: { type: String, default: 'main' },
     parentSlug: { type: String, trim: true, index: true },
-    audience: { type: String, enum: ['shared', 'super-admin', 'admin'], default: 'shared' },
+    audience: {
+      type: String,
+      enum: ['shared', 'master-admin', 'super-admin', 'admin'],
+      default: 'shared',
+    },
   },
   { timestamps: true },
 );

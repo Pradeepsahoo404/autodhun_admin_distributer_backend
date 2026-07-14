@@ -1,4 +1,5 @@
 import { Schema, model, models, Document, Types, Model } from 'mongoose';
+import { tenantIdField } from '@/utils/tenantFields';
 import {
   ISSUES_ENTRY_ASSET_TYPES,
   ISSUES_ENTRY_OWNERSHIP,
@@ -19,6 +20,7 @@ export interface IIssuesEntry extends Document {
   status: IssuesEntryStatus;
   ownership: IssuesEntryOwnership;
   assignedTo: Types.ObjectId;
+  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -49,6 +51,7 @@ const issuesEntrySchema = new Schema<IIssuesEntry>(
       default: '',
     },
     assignedTo: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

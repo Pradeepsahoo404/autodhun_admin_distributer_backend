@@ -26,7 +26,16 @@ class UserRepository extends BaseRepository<IUser> {
   }
 
   async paginate(query: PaginationQuery): Promise<PaginatedResult<IUser>> {
-    const { page, limit, search, status, roleId, sortBy = 'createdAt', sortOrder = 'desc' } = query;
+    const {
+      page,
+      limit,
+      search,
+      status,
+      roleId,
+      tenantId,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = query;
     const filter: Record<string, unknown> = {};
 
     if (search) {
@@ -41,10 +50,15 @@ class UserRepository extends BaseRepository<IUser> {
     if (roleId) {
       filter.role = roleId;
     }
+    if (tenantId) {
+      filter.tenantId = tenantId;
+    }
 
     const [items, total] = await Promise.all([
       UserModel.find(filter)
-        .select('firstName lastName name email role status emailVerified termsAccepted lastLogin createdAt updatedAt')
+        .select(
+          'firstName lastName name email role status emailVerified termsAccepted tenantId lastLogin createdAt updatedAt',
+        )
         .populate('role', 'name slug')
         .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 })
         .skip((page - 1) * limit)
@@ -56,15 +70,19 @@ class UserRepository extends BaseRepository<IUser> {
     return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async countAdminsCreatedSince(since: Date, adminRoleId: string): Promise<number> {
-    return UserModel.countDocuments({
+  async countAdminsCreatedSince(since: Date, adminRoleId: string, tenantId?: string | null): Promise<number> {
+    const filter: Record<string, unknown> = {
       role: adminRoleId,
       createdAt: { $gte: since },
-    }).exec();
+    };
+    if (tenantId) filter.tenantId = tenantId;
+    return UserModel.countDocuments(filter).exec();
   }
 
-  async countAdmins(adminRoleId: string): Promise<number> {
-    return UserModel.countDocuments({ role: adminRoleId }).exec();
+  async countAdmins(adminRoleId: string, tenantId?: string | null): Promise<number> {
+    const filter: Record<string, unknown> = { role: adminRoleId };
+    if (tenantId) filter.tenantId = tenantId;
+    return UserModel.countDocuments(filter).exec();
   }
 }
 

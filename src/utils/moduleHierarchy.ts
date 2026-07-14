@@ -60,6 +60,10 @@ export const isModuleVisibleForRole = (
 ): boolean => {
   const audience = getRootAudience(module, bySlug);
   if (audience === 'shared') return true;
+  // Master sees former Super Admin branches (+ later master-only modules).
+  if (roleSlug === ROLES.MASTER_ADMIN) {
+    return audience === 'super-admin' || audience === 'master-admin';
+  }
   if (roleSlug === ROLES.SUPER_ADMIN) return audience === 'super-admin';
   if (roleSlug === ROLES.ADMIN) return audience === 'admin';
   return audience === 'shared';

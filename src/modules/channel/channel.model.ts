@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { tenantIdField } from '@/utils/tenantFields';
 
 export const CHANNEL_STATUS = {
   ACTIVE: 'active',
@@ -13,6 +14,7 @@ export interface IChannel extends Document {
   channelName: string;
   channelLink: string;
   status: ChannelStatus;
+  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -29,6 +31,7 @@ const channelSchema = new Schema<IChannel>(
       default: CHANNEL_STATUS.ACTIVE,
       index: true,
     },
+    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

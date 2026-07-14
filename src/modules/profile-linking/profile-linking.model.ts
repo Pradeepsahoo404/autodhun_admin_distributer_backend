@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { tenantIdField } from '@/utils/tenantFields';
 
 export const PROFILE_LINKING_STATUS = {
   ACTIVE: 'active',
@@ -15,6 +16,7 @@ export interface IProfileLinking extends Document {
   facebookPageLink: string;
   instagramHandleName: string;
   status: ProfileLinkingStatus;
+  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -33,6 +35,7 @@ const profileLinkingSchema = new Schema<IProfileLinking>(
       default: PROFILE_LINKING_STATUS.IN_PROGRESS,
       index: true,
     },
+    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { tenantIdField } from '@/utils/tenantFields';
 import { LABEL_STATUS, LABEL_STATUS_VALUES, type LabelStatus } from './release-catalog.constants';
 
 export interface IReleaseLabel extends Document {
@@ -6,6 +7,7 @@ export interface IReleaseLabel extends Document {
   name: string;
   normalizedName: string;
   status: LabelStatus;
+  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   ownedBy: Types.ObjectId;
   createdAt: Date;
@@ -15,17 +17,20 @@ export interface IReleaseLabel extends Document {
 const releaseLabelSchema = new Schema<IReleaseLabel>(
   {
     name: { type: String, required: true, trim: true },
-    normalizedName: { type: String, required: true, trim: true, lowercase: true, unique: true, index: true },
+    normalizedName: { type: String, required: true, trim: true, lowercase: true, index: true },
     status: {
       type: String,
       enum: LABEL_STATUS_VALUES,
       default: LABEL_STATUS.ACTIVE,
       index: true,
     },
+    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     ownedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   },
   { timestamps: true },
 );
+
+releaseLabelSchema.index({ tenantId: 1, normalizedName: 1 }, { unique: true });
 
 export const ReleaseLabelModel = model<IReleaseLabel>('ReleaseLabel', releaseLabelSchema);

@@ -1,5 +1,6 @@
 import { Model } from 'mongoose';
-import { ROLES } from '@/constants';
+import { isElevatedRole } from '@/utils/roles';
+import { createdByFeatureScope, type TenantActor } from '@/utils/tenantScope';
 import { YoutubeClaimReleaseModel } from '@/modules/youtube-claim-release/youtube-claim-release.model';
 import { FacebookClaimReleaseModel } from '@/modules/facebook-claim-release/facebook-claim-release.model';
 import { ContentIdModel } from '@/modules/content-id/content-id.model';
@@ -126,6 +127,20 @@ export interface RightsManagerAnalytics {
 interface Actor {
   userId: string;
   roleSlug: string;
+  tenantId: string | null;
+  isMasterAdmin?: boolean;
+  isSuperAdmin?: boolean;
+}
+
+function toTenantActor(actor: Actor): TenantActor {
+  const elevated = isElevatedRole(actor.roleSlug) || Boolean(actor.isSuperAdmin);
+  return {
+    id: actor.userId,
+    role: actor.roleSlug,
+    isSuperAdmin: elevated,
+    isMasterAdmin: actor.isMasterAdmin,
+    tenantId: actor.tenantId,
+  };
 }
 
 function daysAgo(days: number): Date {
@@ -188,8 +203,9 @@ class RightsManagerAnalyticsService {
   ): Promise<RightsManagerAnalytics | null> {
     if (visibleSlugs.length === 0) return null;
 
-    const isSuperAdmin = actor.roleSlug === ROLES.SUPER_ADMIN;
-    const scope = isSuperAdmin ? {} : { createdBy: actor.userId };
+    const tenantActor = toTenantActor(actor);
+    const isSuperAdmin = tenantActor.isSuperAdmin;
+    const scope = createdByFeatureScope(tenantActor);
     const slugSet = new Set(visibleSlugs);
 
     const modulesToQuery = RIGHTS_MANAGER_MODULES.filter((mod) => slugSet.has(mod.slug));

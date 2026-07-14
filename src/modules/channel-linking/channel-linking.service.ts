@@ -1,6 +1,12 @@
 import { channelLinkingRepository } from './channel-linking.repository';
 import { ApiError } from '@/utils/ApiError';
 import {
+  assertFeatureAccess,
+  createdByFeatureScope,
+  requireWriteTenantId,
+  type TenantActor,
+} from '@/utils/tenantScope';
+import {
   CHANNEL_LINKING_AUTO_REJECT_MINUTES,
   CHANNEL_LINKING_MIN_REVENUE_USD,
   CHANNEL_LINKING_STATUS,
@@ -21,23 +27,7 @@ import {
   channelNotificationsService,
 } from '@/modules/notification/channel-notifications.service';
 
-interface Actor {
-  id: string;
-  isSuperAdmin: boolean;
-  name?: string;
-}
-
-function assertOwnership(item: IChannelLinking, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const createdBy = item.createdBy as unknown;
-  const ownerId =
-    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
-      ? String((createdBy as { _id: { toString(): string } })._id)
-      : String(createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only modify your own channel linking entries');
-  }
-}
+type Actor = TenantActor;
 
 function buildLinkingSummary(item: IChannelLinking): Record<string, string> {
   return {
@@ -69,7 +59,7 @@ function resolveAutoRejectAt(revenue: number): Date | null {
 
 class ChannelLinkingService {
   private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+    return createdByFeatureScope(actor);
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IChannelLinking>> {
@@ -79,7 +69,7 @@ class ChannelLinkingService {
   async getById(id: string, actor: Actor): Promise<IChannelLinking> {
     const item = await channelLinkingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel linking entry not found');
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
     return item;
   }
 
@@ -87,6 +77,7 @@ class ChannelLinkingService {
     const autoRejectAt = resolveAutoRejectAt(dto.totalRevenue90Days);
 
     const created = await channelLinkingRepository.create({
+      tenantId: requireWriteTenantId(actor) as never,
       ...dto,
       status: CHANNEL_LINKING_STATUS.IN_PROCESS,
       autoRejectAt,
@@ -124,7 +115,7 @@ class ChannelLinkingService {
         updatedBy: actor.id as never,
       });
     } else {
-      assertOwnership(item, actor);
+      assertFeatureAccess(actor, item, 'createdBy');
 
       // Any admin edit sends the entry back for review, even if it was
       // previously approved or rejected. Revenue re-evaluates auto-reject.
@@ -173,7 +164,7 @@ class ChannelLinkingService {
     if (!item) throw ApiError.notFound('Channel linking entry not found');
 
     // Admins may delete their own entries at any point (including approved).
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
 
     await channelLinkingRepository.deleteById(id);
   }

@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { tenantIdField } from '@/utils/tenantFields';
 
 export interface ILabelTransfer extends Document {
   _id: Types.ObjectId;
@@ -7,6 +8,7 @@ export interface ILabelTransfer extends Document {
   fromUser: Types.ObjectId;
   toUser: Types.ObjectId;
   transferredBy: Types.ObjectId;
+  tenantId?: Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,6 +19,7 @@ const labelTransferSchema = new Schema<ILabelTransfer>(
     labelName: { type: String, required: true, trim: true },
     fromUser: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     toUser: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    tenantId: tenantIdField,
     transferredBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true },

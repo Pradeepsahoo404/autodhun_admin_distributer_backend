@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { tenantIdField } from '@/utils/tenantFields';
 
 export const REFERENCE_OVERLAP_STATUS = {
   ACTIVE: 'active',
@@ -38,6 +39,7 @@ export interface IReferenceOverlap extends Document {
   status: ReferenceOverlapStatus;
   ownership: ReferenceOverlapOwnership;
   assignedTo: Types.ObjectId;
+  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -68,6 +70,7 @@ const referenceOverlapSchema = new Schema<IReferenceOverlap>(
       default: '',
     },
     assignedTo: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

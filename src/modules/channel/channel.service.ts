@@ -1,5 +1,11 @@
 import { channelRepository } from './channel.repository';
 import { ApiError } from '@/utils/ApiError';
+import {
+  assertFeatureAccess,
+  createdByFeatureScope,
+  requireWriteTenantId,
+  type TenantActor,
+} from '@/utils/tenantScope';
 import { CHANNEL_STATUS, IChannel } from './channel.model';
 import { PaginatedResult } from '@/types';
 import {
@@ -15,11 +21,7 @@ import {
   channelNotificationsService,
 } from '@/modules/notification/channel-notifications.service';
 
-interface Actor {
-  id: string;
-  isSuperAdmin: boolean;
-  name?: string;
-}
+type Actor = TenantActor;
 
 function buildChannelSummary(item: IChannel): Record<string, string> {
   return {
@@ -27,18 +29,6 @@ function buildChannelSummary(item: IChannel): Record<string, string> {
     channelLink: item.channelLink,
     status: item.status,
   };
-}
-
-function assertOwnership(item: IChannel, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const createdBy = item.createdBy as unknown;
-  const ownerId =
-    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
-      ? String((createdBy as { _id: { toString(): string } })._id)
-      : String(createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only modify your own channels');
-  }
 }
 
 function escapeCsv(value: string): string {
@@ -54,7 +44,7 @@ function formatDateTime(date: Date): string {
 
 class ChannelService {
   private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+    return createdByFeatureScope(actor);
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IChannel>> {
@@ -64,12 +54,13 @@ class ChannelService {
   async getById(id: string, actor: Actor): Promise<IChannel> {
     const item = await channelRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel not found');
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
     return item;
   }
 
   async create(dto: CreateChannelDto, actor: Actor): Promise<IChannel> {
     const created = await channelRepository.create({
+      tenantId: requireWriteTenantId(actor) as never,
       ...dto,
       status: CHANNEL_STATUS.ACTIVE,
       createdBy: actor.id as never,
@@ -89,7 +80,7 @@ class ChannelService {
   async update(id: string, dto: UpdateChannelDto, actor: Actor): Promise<IChannel> {
     const item = await channelRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel not found');
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
 
     const updated = await channelRepository.updateById(id, {
       ...dto,
@@ -106,6 +97,7 @@ class ChannelService {
 
     const item = await channelRepository.findById(id);
     if (!item) throw ApiError.notFound('Channel not found');
+    assertFeatureAccess(actor, item, 'createdBy');
 
     await channelRepository.updateById(id, {
       status: dto.status,
@@ -127,7 +119,7 @@ class ChannelService {
   async remove(id: string, actor: Actor): Promise<void> {
     const item = await channelRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel not found');
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
     await channelRepository.deleteById(id);
   }
 

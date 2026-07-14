@@ -1,5 +1,11 @@
 import { supportTicketRepository } from './support-ticket.repository';
 import { ApiError } from '@/utils/ApiError';
+import {
+  assertFeatureAccess,
+  createdByFeatureScope,
+  requireWriteTenantId,
+  type TenantActor,
+} from '@/utils/tenantScope';
 import { ISupportTicket } from './support-ticket.model';
 import { PaginatedResult } from '@/types';
 import {
@@ -17,11 +23,7 @@ import {
 } from './support-ticket.constants';
 import { supportTicketNotificationsService } from '@/modules/notification/support-ticket-notifications.service';
 
-interface Actor {
-  id: string;
-  isSuperAdmin: boolean;
-  name?: string;
-}
+type Actor = TenantActor;
 
 function buildTicketSummary(item: ISupportTicket): Record<string, string> {
   return {
@@ -34,19 +36,14 @@ function buildTicketSummary(item: ISupportTicket): Record<string, string> {
 }
 
 function assertOwnership(item: ISupportTicket, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const createdBy = item.createdBy as unknown;
-  const ownerId =
-    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
-      ? String((createdBy as { _id: { toString(): string } })._id)
-      : String(createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only access your own support tickets');
-  }
+  assertFeatureAccess(actor, item, 'createdBy');
 }
 
 function assertAdminCanModifyContent(item: ISupportTicket, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
+  if (actor.isSuperAdmin) {
+    assertFeatureAccess(actor, item, 'createdBy');
+    return;
+  }
   assertOwnership(item, actor);
   if (item.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS) {
     throw ApiError.forbidden('You can only edit tickets that are still in process');
@@ -54,7 +51,10 @@ function assertAdminCanModifyContent(item: ISupportTicket, actor: Actor): void {
 }
 
 function assertAdminCanDelete(item: ISupportTicket, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
+  if (actor.isSuperAdmin) {
+    assertFeatureAccess(actor, item, 'createdBy');
+    return;
+  }
   assertOwnership(item, actor);
   if (item.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS) {
     throw ApiError.forbidden('You can only delete tickets that are still in process');
@@ -63,7 +63,7 @@ function assertAdminCanDelete(item: ISupportTicket, actor: Actor): void {
 
 class SupportTicketService {
   private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+    return createdByFeatureScope(actor);
   }
 
   async list(
@@ -88,6 +88,7 @@ class SupportTicketService {
     const ticketNumber = await supportTicketRepository.getRandomTicketNumber();
     const created = await supportTicketRepository.create({
       ...dto,
+      tenantId: requireWriteTenantId(actor) as never,
       subject: buildSupportTicketSubject(dto.issueType),
       ticketNumber,
       status: SUPPORT_TICKET_STATUS.IN_PROGRESS,
@@ -141,6 +142,7 @@ class SupportTicketService {
 
     const item = await supportTicketRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Support ticket not found');
+    assertFeatureAccess(actor, item, 'createdBy');
 
     const previousStatus = item.status;
     const updatePayload: Record<string, unknown> = {
@@ -181,6 +183,7 @@ class SupportTicketService {
     if (!item) throw ApiError.notFound('Support ticket not found');
 
     if (actor.isSuperAdmin) {
+      assertFeatureAccess(actor, item, 'createdBy');
       await supportTicketRepository.deleteById(id);
       return;
     }

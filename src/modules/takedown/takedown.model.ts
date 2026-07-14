@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { tenantIdField } from '@/utils/tenantFields';
 
 export const TAKEDOWN_STATUS = {
   ACTIVE: 'active',
@@ -14,6 +15,7 @@ export interface ITakedown extends Document {
   isrcCode: string;
   songLink: string;
   status: TakedownStatus;
+  tenantId?: Types.ObjectId | null;
   createdBy: Types.ObjectId;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
@@ -31,6 +33,7 @@ const takedownSchema = new Schema<ITakedown>(
       default: TAKEDOWN_STATUS.IN_PROGRESS,
       index: true,
     },
+    tenantId: tenantIdField,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

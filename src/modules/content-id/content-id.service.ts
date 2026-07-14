@@ -1,5 +1,11 @@
 import { contentIdRepository } from './content-id.repository';
 import { ApiError } from '@/utils/ApiError';
+import {
+  assertFeatureAccess,
+  createdByFeatureScope,
+  requireWriteTenantId,
+  type TenantActor,
+} from '@/utils/tenantScope';
 import { CONTENT_ID_STATUS, IContentId } from './content-id.model';
 import { PaginatedResult } from '@/types';
 import {
@@ -13,22 +19,7 @@ import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
 import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
-interface Actor {
-  id: string;
-  isSuperAdmin: boolean;
-}
-
-function assertOwnership(item: IContentId, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const createdBy = item.createdBy as unknown;
-  const ownerId =
-    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
-      ? String((createdBy as { _id: { toString(): string } })._id)
-      : String(createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only modify your own content ID entries');
-  }
-}
+type Actor = TenantActor;
 
 function escapeCsv(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
@@ -43,7 +34,7 @@ function formatDateTime(date: Date): string {
 
 class ContentIdService {
   private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+    return createdByFeatureScope(actor);
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IContentId>> {
@@ -53,7 +44,7 @@ class ContentIdService {
   async getById(id: string, actor: Actor): Promise<IContentId> {
     const item = await contentIdRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Content ID entry not found');
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
     return item;
   }
 
@@ -61,6 +52,7 @@ class ContentIdService {
     await assertLabelsAccessible(actor, dto.labelName);
 
     const created = await contentIdRepository.create({
+      tenantId: requireWriteTenantId(actor) as never,
       ...dto,
       status: CONTENT_ID_STATUS.IN_PROGRESS,
       createdBy: actor.id as never,
@@ -75,7 +67,7 @@ class ContentIdService {
   async update(id: string, dto: UpdateContentIdDto, actor: Actor): Promise<IContentId> {
     const item = await contentIdRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Content ID entry not found');
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
 
     await assertLabelsAccessible(actor, dto.labelName);
 
@@ -109,7 +101,7 @@ class ContentIdService {
   async remove(id: string, actor: Actor): Promise<void> {
     const item = await contentIdRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Content ID entry not found');
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
     await contentIdRepository.deleteById(id);
   }
 

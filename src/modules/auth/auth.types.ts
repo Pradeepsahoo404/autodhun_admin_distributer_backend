@@ -1,5 +1,6 @@
 import { IUser, IUserBankDetails, IUserProfile } from '@/modules/user/user.model';
 import { isProfileComplete } from '@/utils/profileCompletion';
+import { isMasterAdminRole } from '@/utils/roles';
 
 const emptyProfile = (): IUserProfile => ({
   postalAddress: '',
@@ -34,6 +35,9 @@ export interface AuthUserDto {
   profile?: IUserProfile;
   bankDetails?: IUserBankDetails;
   lastLogin?: Date;
+  /** null for Master Admin / unscoped elevated accounts. */
+  tenantId: string | null;
+  isMasterAdmin: boolean;
 }
 
 export interface AuthTokens {
@@ -85,4 +89,6 @@ export const toAuthUserDto = (user: IUser, roleSlug: string): AuthUserDto => ({
     micrCode: user.bankDetails?.micrCode ?? '',
   },
   lastLogin: user.lastLogin,
+  tenantId: user.tenantId ? user.tenantId.toString() : null,
+  isMasterAdmin: isMasterAdminRole(roleSlug),
 });

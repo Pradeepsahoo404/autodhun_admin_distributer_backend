@@ -9,7 +9,7 @@
  *
  * `parentSlug` — optional; builds collapsible nested navigation in the sidebar.
  */
-export type ModuleAudience = 'shared' | 'super-admin' | 'admin';
+export type ModuleAudience = 'shared' | 'master-admin' | 'super-admin' | 'admin';
 
 export interface ModuleSeed {
   name: string;
@@ -158,14 +158,25 @@ export const DEFAULT_MODULES: ModuleSeed[] = [
   m('Settings', 'settings', '/dashboard/settings', 'Settings', 200),
   m('Help Support', 'help-support', '/dashboard/help-support', 'LifeBuoy', 210),
 
-  // ── Management (Super Admin) ────────────────────────────────────────────
+  // ── Master Admin platform ───────────────────────────────────────────────
+  m('Master', 'master', '/dashboard/master', 'Crown', 280, {
+    group: 'management',
+    audience: 'master-admin',
+  }),
+  m('Tenants', 'tenants', '/dashboard/master/tenants', 'Building2', 281, {
+    parentSlug: 'master',
+  }),
+
+  // ── Management: tenant Super Admin keeps Users + Permissions ────────────
   m('Users', 'users', '/dashboard/users', 'Users', 300, { group: 'management', audience: 'super-admin' }),
-  m('Roles', 'roles', '/dashboard/roles', 'ShieldCheck', 310, { group: 'management', audience: 'super-admin' }),
-  m('Modules', 'modules', '/dashboard/modules', 'Boxes', 320, { group: 'management', audience: 'super-admin' }),
   m('Permissions', 'permissions', '/dashboard/permissions', 'KeyRound', 330, {
     group: 'management',
     audience: 'super-admin',
   }),
+
+  // ── Management: Master-only catalog tooling ─────────────────────────────
+  m('Roles', 'roles', '/dashboard/roles', 'ShieldCheck', 310, { group: 'management', audience: 'master-admin' }),
+  m('Modules', 'modules', '/dashboard/modules', 'Boxes', 320, { group: 'management', audience: 'master-admin' }),
 ];
 
 /** Slugs the Admin role can view out-of-the-box (root modules only). Child modules inherit. */

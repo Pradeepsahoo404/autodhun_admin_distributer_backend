@@ -1,5 +1,11 @@
 import { manualClaimingRepository } from './manual-claiming.repository';
 import { ApiError } from '@/utils/ApiError';
+import {
+  assertFeatureAccess,
+  createdByFeatureScope,
+  requireWriteTenantId,
+  type TenantActor,
+} from '@/utils/tenantScope';
 import { IManualClaiming, MANUAL_CLAIMING_STATUS } from './manual-claiming.model';
 import { PaginatedResult } from '@/types';
 import {
@@ -13,22 +19,7 @@ import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
 import { assertLabelsAccessible } from '@/utils/labelOwnership';
 
-interface Actor {
-  id: string;
-  isSuperAdmin: boolean;
-}
-
-function assertOwnership(item: IManualClaiming, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const createdBy = item.createdBy as unknown;
-  const ownerId =
-    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
-      ? String((createdBy as { _id: { toString(): string } })._id)
-      : String(createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only modify your own manual claiming entries');
-  }
-}
+type Actor = TenantActor;
 
 function escapeCsv(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
@@ -43,7 +34,7 @@ function formatDateTime(date: Date): string {
 
 class ManualClaimingService {
   private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+    return createdByFeatureScope(actor);
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IManualClaiming>> {
@@ -53,7 +44,7 @@ class ManualClaimingService {
   async getById(id: string, actor: Actor): Promise<IManualClaiming> {
     const item = await manualClaimingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Manual claiming entry not found');
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
     return item;
   }
 
@@ -61,6 +52,7 @@ class ManualClaimingService {
     await assertLabelsAccessible(actor, dto.labelName);
 
     const created = await manualClaimingRepository.create({
+      tenantId: requireWriteTenantId(actor) as never,
       ...dto,
       status: MANUAL_CLAIMING_STATUS.IN_PROGRESS,
       createdBy: actor.id as never,
@@ -79,7 +71,7 @@ class ManualClaimingService {
   ): Promise<IManualClaiming> {
     const item = await manualClaimingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Manual claiming entry not found');
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
 
     await assertLabelsAccessible(actor, dto.labelName);
 
@@ -118,7 +110,7 @@ class ManualClaimingService {
   async remove(id: string, actor: Actor): Promise<void> {
     const item = await manualClaimingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Manual claiming entry not found');
-    assertOwnership(item, actor);
+    assertFeatureAccess(actor, item, 'createdBy');
     await manualClaimingRepository.deleteById(id);
   }
 

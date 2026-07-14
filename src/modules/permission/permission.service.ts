@@ -3,7 +3,7 @@ import { roleRepository } from '@/modules/role/role.repository';
 import { moduleRepository } from '@/modules/module/module.repository';
 import { IPermission, PermissionModel } from './permission.model';
 import { ApiError } from '@/utils/ApiError';
-import { ROLES, PermissionAction, PERMISSION_ACTIONS } from '@/constants';
+import { PermissionAction, PERMISSION_ACTIONS, ROLES } from '@/constants';
 import { EffectivePermissionRow, ResolvedModulePermission } from '@/types';
 import {
   buildModuleSlugMap,
@@ -14,15 +14,22 @@ import {
   isRootModule,
 } from '@/utils/moduleHierarchy';
 import { IModule } from '@/modules/module/module.model';
+import { isElevatedRole } from '@/utils/roles';
 
-const actionToField: Record<PermissionAction, keyof Pick<IPermission, 'canView' | 'canCreate' | 'canUpdate' | 'canDelete'>> = {
+const actionToField: Record<
+  PermissionAction,
+  keyof Pick<IPermission, 'canView' | 'canCreate' | 'canUpdate' | 'canDelete'>
+> = {
   view: PERMISSION_ACTIONS.VIEW,
   create: PERMISSION_ACTIONS.CREATE,
   update: PERMISSION_ACTIONS.UPDATE,
   delete: PERMISSION_ACTIONS.DELETE,
 };
 
-const toResolved = (mod: IModule, perms: Pick<IPermission, 'canView' | 'canCreate' | 'canUpdate' | 'canDelete'>): ResolvedModulePermission => ({
+const toResolved = (
+  mod: IModule,
+  perms: Pick<IPermission, 'canView' | 'canCreate' | 'canUpdate' | 'canDelete'>,
+): ResolvedModulePermission => ({
   moduleId: mod._id.toString(),
   name: mod.name,
   slug: mod.slug,
@@ -38,23 +45,41 @@ const toResolved = (mod: IModule, perms: Pick<IPermission, 'canView' | 'canCreat
   canDelete: perms.canDelete,
 });
 
+export interface PermissionActor {
+  id: string;
+  role: string;
+  isMasterAdmin: boolean;
+  isSuperAdmin: boolean;
+  tenantId: string | null;
+}
+
 class PermissionService {
   /**
    * Resolves the sidebar for a role. Permissions are stored on root modules only;
    * child modules inherit the root module's actions automatically.
+   * Admin users resolve against their tenant matrix (global template fallback).
    */
-  async resolveForRole(roleId: string, roleSlug: string): Promise<ResolvedModulePermission[]> {
+  async resolveForRole(
+    roleId: string,
+    roleSlug: string,
+    tenantId: string | null = null,
+  ): Promise<ResolvedModulePermission[]> {
     const modules = await moduleRepository.findActiveSorted();
     const bySlug = buildModuleSlugMap(modules);
     const visibleModules = modules.filter((mod) => isModuleVisibleForRole(mod, bySlug, roleSlug));
 
-    if (roleSlug === ROLES.SUPER_ADMIN) {
+    if (isElevatedRole(roleSlug)) {
       return visibleModules.map((m) =>
         toResolved(m, { canView: true, canCreate: true, canUpdate: true, canDelete: true }),
       );
     }
 
-    const rootPermBySlug = await this.loadRootPermissionMap(roleId);
+    const effectiveTenantId = roleSlug === ROLES.ADMIN ? tenantId : null;
+    if (effectiveTenantId) {
+      await this.ensureTenantAdminPermissions(effectiveTenantId);
+    }
+
+    const rootPermBySlug = await this.loadRootPermissionMap(roleId, effectiveTenantId);
 
     return visibleModules
       .filter((mod) => {
@@ -70,8 +95,14 @@ class PermissionService {
   }
 
   /** Authorization check — always evaluates against the root module's permission row. */
-  async can(roleId: string, roleSlug: string, moduleSlug: string, action: PermissionAction): Promise<boolean> {
-    if (roleSlug === ROLES.SUPER_ADMIN) return true;
+  async can(
+    roleId: string,
+    roleSlug: string,
+    moduleSlug: string,
+    action: PermissionAction,
+    tenantId: string | null = null,
+  ): Promise<boolean> {
+    if (isElevatedRole(roleSlug)) return true;
 
     const modules = await moduleRepository.findActiveSorted();
     const moduleDoc = modules.find((m) => m.slug === moduleSlug);
@@ -82,7 +113,16 @@ class PermissionService {
     const rootModule = modules.find((m) => m.slug === rootSlug);
     if (!rootModule) return false;
 
-    const permission = await permissionRepository.findByRoleAndModule(roleId, rootModule._id.toString());
+    const effectiveTenantId = roleSlug === ROLES.ADMIN ? tenantId : null;
+    if (effectiveTenantId) {
+      await this.ensureTenantAdminPermissions(effectiveTenantId);
+    }
+
+    const permission = await permissionRepository.findByRoleAndModule(
+      roleId,
+      rootModule._id.toString(),
+      effectiveTenantId,
+    );
     if (!permission) return false;
 
     return Boolean(permission[actionToField[action]]);
@@ -90,16 +130,20 @@ class PermissionService {
 
   /**
    * Permission matrix for the admin UI: root modules only for the target role.
-   * Child modules inherit from their parent at runtime (sidebar, guards, APIs).
+   * `tenantId` scopes Admin-role matrix per organization.
    */
-  async getMatrix(roleId: string, roleSlug: string): Promise<EffectivePermissionRow[]> {
+  async getMatrix(
+    roleId: string,
+    roleSlug: string,
+    tenantId: string | null = null,
+  ): Promise<EffectivePermissionRow[]> {
     const modules = await moduleRepository.findActiveSorted();
     const bySlug = buildModuleSlugMap(modules);
     const rootModules = getRootModules(modules).filter(
       (mod) => mod.isActive && isModuleVisibleForRole(mod, bySlug, roleSlug),
     );
 
-    if (roleSlug === ROLES.SUPER_ADMIN) {
+    if (isElevatedRole(roleSlug)) {
       return rootModules.map((mod) => ({
         moduleId: mod._id.toString(),
         name: mod.name,
@@ -115,7 +159,12 @@ class PermissionService {
       }));
     }
 
-    const rootPermBySlug = await this.loadRootPermissionMap(roleId);
+    const effectiveTenantId = roleSlug === ROLES.ADMIN ? tenantId : null;
+    if (effectiveTenantId) {
+      await this.ensureTenantAdminPermissions(effectiveTenantId);
+    }
+
+    const rootPermBySlug = await this.loadRootPermissionMap(roleId, effectiveTenantId);
 
     return rootModules.map((mod) => {
       const perms = rootPermBySlug.get(mod.slug) ?? {
@@ -138,8 +187,10 @@ class PermissionService {
     });
   }
 
-  async list(roleId?: string): Promise<IPermission[]> {
-    const permissions = roleId ? await permissionRepository.findByRole(roleId) : await permissionRepository.find();
+  async list(roleId?: string, tenantId: string | null = null): Promise<IPermission[]> {
+    const permissions = roleId
+      ? await permissionRepository.findByRole(roleId, tenantId)
+      : await permissionRepository.find();
     if (!roleId) return permissions;
 
     const modules = await moduleRepository.findAllSorted();
@@ -148,14 +199,19 @@ class PermissionService {
     return permissions.filter((p) => rootIds.has(p.moduleId.toString()));
   }
 
-  async setPermission(input: {
-    roleId: string;
-    moduleId: string;
-    canView?: boolean;
-    canCreate?: boolean;
-    canUpdate?: boolean;
-    canDelete?: boolean;
-  }): Promise<IPermission> {
+  async setPermission(
+    input: {
+      roleId: string;
+      moduleId: string;
+      canView?: boolean;
+      canCreate?: boolean;
+      canUpdate?: boolean;
+      canDelete?: boolean;
+      tenantId?: string | null;
+    },
+    actor: PermissionActor,
+  ): Promise<IPermission> {
+    const scope = await this.resolveWriteScope(input.roleId, input.tenantId, actor);
     const [role, moduleDoc] = await Promise.all([
       roleRepository.findById(input.roleId),
       moduleRepository.findById(input.moduleId),
@@ -165,26 +221,27 @@ class PermissionService {
     if (!isRootModule(moduleDoc)) {
       throw ApiError.badRequest('Permissions can only be set on main modules');
     }
-    if (role.slug === ROLES.SUPER_ADMIN) {
-      throw ApiError.badRequest('Super Admin permissions are implicit and cannot be edited');
+    if (isElevatedRole(role.slug)) {
+      throw ApiError.badRequest('Elevated role permissions are implicit and cannot be edited');
     }
 
-    const result = await permissionRepository.upsert(input.roleId, input.moduleId, {
-      canView: input.canView ?? false,
-      canCreate: input.canCreate ?? false,
-      canUpdate: input.canUpdate ?? false,
-      canDelete: input.canDelete ?? false,
-    });
+    const result = await permissionRepository.upsert(
+      input.roleId,
+      input.moduleId,
+      {
+        canView: input.canView ?? false,
+        canCreate: input.canCreate ?? false,
+        canUpdate: input.canUpdate ?? false,
+        canDelete: input.canDelete ?? false,
+      },
+      scope.tenantId,
+    );
     if (!result) throw ApiError.internal('Failed to persist permission');
 
-    await this.clearChildPermissions(input.roleId);
+    await this.clearChildPermissions(input.roleId, scope.tenantId);
     return result;
   }
 
-  /**
-   * Bulk upsert for the permission matrix. Only root module rows are accepted;
-   * child modules inherit automatically and any stale child rows are removed.
-   */
   async bulkSet(
     roleId: string,
     rows: Array<{
@@ -194,12 +251,16 @@ class PermissionService {
       canUpdate?: boolean;
       canDelete?: boolean;
     }>,
+    actor: PermissionActor,
+    requestedTenantId?: string | null,
   ): Promise<IPermission[]> {
     const role = await roleRepository.findById(roleId);
     if (!role) throw ApiError.notFound('Role not found');
-    if (role.slug === ROLES.SUPER_ADMIN) {
-      throw ApiError.badRequest('Super Admin permissions are implicit and cannot be edited');
+    if (isElevatedRole(role.slug)) {
+      throw ApiError.badRequest('Elevated role permissions are implicit and cannot be edited');
     }
+
+    const scope = await this.resolveWriteScope(roleId, requestedTenantId, actor);
 
     const modules = await moduleRepository.findAllSorted();
     const rootIds = new Set(getRootModules(modules).map((m) => m._id.toString()));
@@ -212,34 +273,127 @@ class PermissionService {
 
     const results = await Promise.all(
       rows.map((row) =>
-        permissionRepository.upsert(roleId, row.moduleId, {
-          canView: row.canView ?? false,
-          canCreate: row.canCreate ?? false,
-          canUpdate: row.canUpdate ?? false,
-          canDelete: row.canDelete ?? false,
-        }),
+        permissionRepository.upsert(
+          roleId,
+          row.moduleId,
+          {
+            canView: row.canView ?? false,
+            canCreate: row.canCreate ?? false,
+            canUpdate: row.canUpdate ?? false,
+            canDelete: row.canDelete ?? false,
+          },
+          scope.tenantId,
+        ),
       ),
     );
 
-    await this.clearChildPermissions(roleId);
+    await this.clearChildPermissions(roleId, scope.tenantId);
     return results.filter((r): r is IPermission => r !== null);
   }
 
-  async update(id: string, actions: Partial<IPermission>): Promise<IPermission> {
+  async update(id: string, actions: Partial<IPermission>, actor: PermissionActor): Promise<IPermission> {
+    const existing = await permissionRepository.findById(id);
+    if (!existing) throw ApiError.notFound('Permission not found');
+
+    const existingTenantId = existing.tenantId ? existing.tenantId.toString() : null;
+    if (!actor.isMasterAdmin) {
+      if (!actor.tenantId || existingTenantId !== actor.tenantId) {
+        throw ApiError.forbidden('Cannot modify permissions for another tenant');
+      }
+    }
+
     const updated = await permissionRepository.updateById(id, actions);
     if (!updated) throw ApiError.notFound('Permission not found');
     return updated;
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, actor: PermissionActor): Promise<void> {
+    const existing = await permissionRepository.findById(id);
+    if (!existing) throw ApiError.notFound('Permission not found');
+
+    const existingTenantId = existing.tenantId ? existing.tenantId.toString() : null;
+    if (!actor.isMasterAdmin) {
+      if (!actor.tenantId || existingTenantId !== actor.tenantId) {
+        throw ApiError.forbidden('Cannot delete permissions for another tenant');
+      }
+    }
+
     const deleted = await permissionRepository.deleteById(id);
     if (!deleted) throw ApiError.notFound('Permission not found');
   }
 
+  /**
+   * Clone global Admin template permissions into a tenant on first use / tenant create.
+   * Idempotent — no-op if tenant rows already exist.
+   */
+  async ensureTenantAdminPermissions(tenantId: string): Promise<void> {
+    const adminRole = await roleRepository.findBySlug(ROLES.ADMIN);
+    if (!adminRole) return;
+
+    const roleId = adminRole._id.toString();
+    const existing = await permissionRepository.countByRole(roleId, tenantId);
+    if (existing > 0) return;
+
+    const globals = await permissionRepository.findByRole(roleId, null);
+    if (globals.length === 0) return;
+
+    await Promise.all(
+      globals.map((perm) =>
+        permissionRepository.upsert(
+          roleId,
+          perm.moduleId.toString(),
+          {
+            canView: perm.canView,
+            canCreate: perm.canCreate,
+            canUpdate: perm.canUpdate,
+            canDelete: perm.canDelete,
+          },
+          tenantId,
+        ),
+      ),
+    );
+  }
+
+  private async resolveWriteScope(
+    roleId: string,
+    requestedTenantId: string | null | undefined,
+    actor: PermissionActor,
+  ): Promise<{ tenantId: string | null }> {
+    const role = await roleRepository.findById(roleId);
+    if (!role) throw ApiError.notFound('Role not found');
+
+    if (actor.isMasterAdmin) {
+      // Master may edit global template (null) or a specific tenant Admin matrix.
+      if (role.slug !== ROLES.ADMIN && requestedTenantId) {
+        throw ApiError.badRequest('Tenant-scoped permissions are only supported for the Admin role');
+      }
+      return { tenantId: requestedTenantId ?? null };
+    }
+
+    // Tenant Super Admin — only Admin role for own tenant.
+    if (!actor.tenantId) {
+      throw ApiError.forbidden('Your account is not assigned to a tenant');
+    }
+    if (role.slug !== ROLES.ADMIN) {
+      throw ApiError.forbidden('You can only configure Admin permissions for your organization');
+    }
+    if (requestedTenantId && requestedTenantId !== actor.tenantId) {
+      throw ApiError.forbidden('Cannot configure another tenant');
+    }
+    return { tenantId: actor.tenantId };
+  }
+
   private async loadRootPermissionMap(
     roleId: string,
+    tenantId: string | null,
   ): Promise<Map<string, Pick<IPermission, 'canView' | 'canCreate' | 'canUpdate' | 'canDelete'>>> {
-    const permissions = await permissionRepository.findByRoleWithModules(roleId);
+    let permissions = await permissionRepository.findByRoleWithModules(roleId, tenantId);
+
+    // Fallback to global template if tenant copy is empty (should be rare after ensure).
+    if (tenantId && permissions.length === 0) {
+      permissions = await permissionRepository.findByRoleWithModules(roleId, null);
+    }
+
     const map = new Map<string, Pick<IPermission, 'canView' | 'canCreate' | 'canUpdate' | 'canDelete'>>();
 
     for (const perm of permissions) {
@@ -256,11 +410,21 @@ class PermissionService {
     return map;
   }
 
-  private async clearChildPermissions(roleId: string): Promise<void> {
+  private async clearChildPermissions(roleId: string, tenantId: string | null): Promise<void> {
     const modules = await moduleRepository.findAllSorted();
     const childIds = getChildModules(modules).map((m) => m._id);
     if (childIds.length === 0) return;
-    await PermissionModel.deleteMany({ roleId, moduleId: { $in: childIds } });
+
+    const filter =
+      tenantId === null
+        ? {
+            roleId,
+            moduleId: { $in: childIds },
+            $or: [{ tenantId: null }, { tenantId: { $exists: false } }],
+          }
+        : { roleId, moduleId: { $in: childIds }, tenantId };
+
+    await PermissionModel.deleteMany(filter);
   }
 }
 

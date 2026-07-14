@@ -37,13 +37,16 @@ import {
   normalizeReleaseIsrc,
 } from '@/utils/releaseIsrc';
 import { assertLabelsAccessible, ensureLabelOwnershipBackfill } from '@/utils/labelOwnership';
+import {
+  assertFeatureAccess,
+  requireWriteTenantId,
+  tenantScopeFilter,
+  type TenantActor,
+} from '@/utils/tenantScope';
 
-interface Actor {
-  id: string;
+interface Actor extends TenantActor {
   roleId: string;
   roleSlug: string;
-  isSuperAdmin: boolean;
-  name?: string;
 }
 
 interface UploadedFiles {
@@ -74,9 +77,10 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Rejects a release whose Title+Artist+Label or UPC already exists. */
+/** Rejects a release whose Title+Artist+Label or UPC already exists (within tenant). */
 async function assertReleaseNotDuplicate(
   data: { title: string; artist: string; label: string; upc?: string },
+  tenantId: string,
   excludeReleaseId?: string,
 ): Promise<void> {
   const title = data.title.trim();
@@ -93,7 +97,7 @@ async function assertReleaseNotDuplicate(
   ];
   if (upc) orConditions.push({ upc });
 
-  const filter: Record<string, unknown> = { $or: orConditions };
+  const filter: Record<string, unknown> = { tenantId, $or: orConditions };
   if (excludeReleaseId && Types.ObjectId.isValid(excludeReleaseId)) {
     filter._id = { $ne: new Types.ObjectId(excludeReleaseId) };
   }
@@ -122,20 +126,8 @@ function primaryIsrc(item: IMusicRelease): string {
   return '';
 }
 
-function resolveOwnerId(createdBy: unknown): string {
-  if (!createdBy) return '';
-  if (typeof createdBy === 'object' && createdBy !== null && '_id' in createdBy) {
-    return String((createdBy as { _id: { toString(): string } })._id);
-  }
-  return String(createdBy);
-}
-
 function assertOwnership(item: IMusicRelease, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const ownerId = resolveOwnerId(item.createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only access your own releases');
-  }
+  assertFeatureAccess(actor, item, 'createdBy');
 }
 
 async function assertModuleAccess(
@@ -151,25 +143,30 @@ async function assertModuleAccess(
 }
 
 function scopeForContext(context: MusicReleaseListContext, actor: Actor): Record<string, unknown> {
+  const tenant = tenantScopeFilter(actor);
+
   if (context === MUSIC_RELEASE_LIST_CONTEXT.CONTENT_DELIVERY) {
     if (!actor.isSuperAdmin) {
       throw ApiError.forbidden('Content Delivery is for Super Admin only');
     }
-    return { status: { $in: CONTENT_DELIVERY_STATUSES } };
+    return { ...tenant, status: { $in: CONTENT_DELIVERY_STATUSES } };
   }
 
   if (context === MUSIC_RELEASE_LIST_CONTEXT.ASSETS_OVERVIEW) {
     if (!actor.isSuperAdmin) {
       throw ApiError.forbidden('Assets overview is for Super Admin only');
     }
-    return { status: { $in: ASSETS_OVERVIEW_STATUSES } };
+    return { ...tenant, status: { $in: ASSETS_OVERVIEW_STATUSES } };
   }
 
+  // Default / correction: creator-scoped (+ tenant). Elevated users see own rows if they
+  // open "My Releases"; content-delivery / assets-overview use full tenant above.
   if (context === MUSIC_RELEASE_LIST_CONTEXT.CORRECTION) {
-    return { createdBy: actor.id, status: MUSIC_RELEASE_STATUS.CORRECTION };
+    return { ...tenant, createdBy: actor.id, status: MUSIC_RELEASE_STATUS.CORRECTION };
   }
 
   return {
+    ...tenant,
     createdBy: actor.id,
     status: { $ne: MUSIC_RELEASE_STATUS.CORRECTION },
   };
@@ -219,7 +216,8 @@ class MusicReleaseService {
 
     await assertLabelsAccessible(actor, dto.label);
 
-    await assertReleaseNotDuplicate(dto);
+    const tenantId = requireWriteTenantId(actor);
+    await assertReleaseNotDuplicate(dto, tenantId);
 
     await assertOwnIsrcsAvailable(dto.tracks);
 
@@ -242,6 +240,7 @@ class MusicReleaseService {
       tracks,
       coverArtUrl,
       audioFiles,
+      tenantId: tenantId as never,
       status: MUSIC_RELEASE_STATUS.IN_REVIEW,
       createdBy: actor.id as never,
       updatedBy: actor.id as never,
@@ -256,6 +255,7 @@ class MusicReleaseService {
   async bulkImport(fileBuffer: Buffer, actor: Actor): Promise<BulkImportResult> {
     await assertModuleAccess(actor, 'release', 'create');
 
+    const tenantId = requireWriteTenantId(actor);
     const { releases, errors, totalRows } = parseBulkReleaseWorkbook(fileBuffer);
 
     if (totalRows === 0) {
@@ -267,7 +267,10 @@ class MusicReleaseService {
     if (!actor.isSuperAdmin && releases.length > 0) {
       await ensureLabelOwnershipBackfill();
       const uniqueNormalized = [...new Set(releases.map((r) => r.label.trim().toLowerCase()))];
-      const labels = await ReleaseLabelModel.find({ normalizedName: { $in: uniqueNormalized } })
+      const labels = await ReleaseLabelModel.find({
+        normalizedName: { $in: uniqueNormalized },
+        tenantId,
+      })
         .select('name normalizedName ownedBy status')
         .lean();
       const byNorm = new Map(labels.map((l) => [l.normalizedName, l]));
@@ -363,6 +366,7 @@ class MusicReleaseService {
 
       const existing = await MusicReleaseModel.find(
         {
+          tenantId,
           $or: [
             { title: { $in: titles.map((t) => new RegExp(`^${escapeRegex(t)}$`, 'i')) } },
             ...(upcs.length ? [{ upc: { $in: upcs } }] : []),
@@ -437,6 +441,7 @@ class MusicReleaseService {
         scheduledReleaseDate: release.scheduledReleaseDate,
         scheduleNotes: release.scheduleNotes,
         releasePlatform: release.releasePlatform,
+        tenantId,
         status: MUSIC_RELEASE_STATUS.IN_REVIEW,
         createdBy: actor.id,
         updatedBy: actor.id,
@@ -472,7 +477,10 @@ class MusicReleaseService {
 
     await assertLabelsAccessible(actor, dto.label);
 
-    await assertReleaseNotDuplicate(dto, id);
+    const tenantId = item.tenantId
+      ? String(item.tenantId)
+      : requireWriteTenantId(actor);
+    await assertReleaseNotDuplicate(dto, tenantId, id);
 
     await assertOwnIsrcsAvailable(dto.tracks, id);
 
@@ -532,6 +540,7 @@ class MusicReleaseService {
 
     const item = await musicReleaseRepository.findById(id);
     if (!item) throw ApiError.notFound('Release not found');
+    assertFeatureAccess(actor, item, 'createdBy');
 
     await musicReleaseRepository.updateById(id, {
       status: dto.status,
@@ -559,6 +568,9 @@ class MusicReleaseService {
     }
 
     const releases = await musicReleaseRepository.findByIdsPopulated(dto.ids);
+    for (const release of releases) {
+      assertFeatureAccess(actor, release, 'createdBy');
+    }
     const updated = await musicReleaseRepository.updateStatusByIds(
       dto.ids,
       dto.status,

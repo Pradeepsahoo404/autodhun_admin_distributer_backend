@@ -1,5 +1,6 @@
 import { Model } from 'mongoose';
-import { ROLES } from '@/constants';
+import { isElevatedRole } from '@/utils/roles';
+import { assignedToFeatureScope, type TenantActor } from '@/utils/tenantScope';
 import {
   ISSUES_MODULES,
   ISSUES_MODULE_SLUGS,
@@ -83,6 +84,20 @@ export interface IssuesAnalytics {
 interface Actor {
   userId: string;
   roleSlug: string;
+  tenantId: string | null;
+  isMasterAdmin?: boolean;
+  isSuperAdmin?: boolean;
+}
+
+function toTenantActor(actor: Actor): TenantActor {
+  const elevated = isElevatedRole(actor.roleSlug) || Boolean(actor.isSuperAdmin);
+  return {
+    id: actor.userId,
+    role: actor.roleSlug,
+    isSuperAdmin: elevated,
+    isMasterAdmin: actor.isMasterAdmin,
+    tenantId: actor.tenantId,
+  };
 }
 
 function daysAgo(days: number): Date {
@@ -145,8 +160,9 @@ class IssuesAnalyticsService {
   ): Promise<IssuesAnalytics | null> {
     if (visibleSlugs.length === 0) return null;
 
-    const isSuperAdmin = actor.roleSlug === ROLES.SUPER_ADMIN;
-    const scope = isSuperAdmin ? {} : { assignedTo: actor.userId };
+    const tenantActor = toTenantActor(actor);
+    const isSuperAdmin = tenantActor.isSuperAdmin;
+    const scope = assignedToFeatureScope(tenantActor);
     const slugSet = new Set(visibleSlugs);
 
     const modulesToQuery = ISSUES_ANALYTICS_MODULES.filter((mod) => slugSet.has(mod.slug));

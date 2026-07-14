@@ -1,12 +1,16 @@
-import { ROLES } from '@/constants';
+import { ROLES, USER_STATUS } from '@/constants';
 import { ReleaseLabelModel } from '@/modules/release-catalog/release-label.model';
 import { roleRepository } from '@/modules/role/role.repository';
 import { UserModel } from '@/modules/user/user.model';
 import { ApiError } from '@/utils/ApiError';
+import { isPlatformMaster } from '@/utils/tenantScope';
 
 export interface LabelAccessActor {
   id: string;
   isSuperAdmin: boolean;
+  isMasterAdmin?: boolean;
+  tenantId?: string | null;
+  role?: string;
 }
 
 function normalizeLabelName(name: string): string {
@@ -40,7 +44,12 @@ export async function assertLabelsAccessible(
   actor: LabelAccessActor,
   ...labelNames: Array<string | undefined | null>
 ): Promise<void> {
-  if (actor.isSuperAdmin) return;
+  if (Boolean(actor.isMasterAdmin) || isPlatformMaster({
+    isMasterAdmin: actor.isMasterAdmin,
+    role: actor.role ?? '',
+  })) {
+    return;
+  }
 
   await ensureLabelOwnershipBackfill();
 
@@ -48,8 +57,15 @@ export async function assertLabelsAccessible(
   if (names.length === 0) return;
 
   const normalizedNames = names.map(normalizeLabelName);
-  const labels = await ReleaseLabelModel.find({ normalizedName: { $in: normalizedNames } })
-    .select('name normalizedName ownedBy status')
+  const filter: Record<string, unknown> = { normalizedName: { $in: normalizedNames } };
+  if (actor.tenantId) {
+    filter.tenantId = actor.tenantId;
+  } else {
+    throw ApiError.forbidden('Your account is not assigned to a tenant');
+  }
+
+  const labels = await ReleaseLabelModel.find(filter)
+    .select('name normalizedName ownedBy status tenantId')
     .lean();
 
   const labelByNormalized = new Map(labels.map((label) => [label.normalizedName, label]));
@@ -60,23 +76,34 @@ export async function assertLabelsAccessible(
       throw ApiError.badRequest(`Label "${name}" is not available. Create it from your release form first.`);
     }
 
-    if (String(label.ownedBy) !== actor.id) {
-      throw ApiError.forbidden(`You do not have access to label "${name}"`);
-    }
-
     if (label.status && label.status !== 'active') {
       throw ApiError.forbidden(`Label "${name}" is blocked and cannot be used`);
+    }
+
+    // Super Admin: any active label in tenant. Admin: must own the label.
+    if (actor.isSuperAdmin) continue;
+
+    if (String(label.ownedBy) !== actor.id) {
+      throw ApiError.forbidden(`You do not have access to label "${name}"`);
     }
   }
 }
 
-export async function findActiveAdminUsers(): Promise<
-  Array<{ _id: string; name: string; email: string }>
-> {
+export async function findActiveAdminUsers(
+  tenantId?: string | null,
+): Promise<Array<{ _id: string; name: string; email: string }>> {
   const adminRole = await roleRepository.findBySlug(ROLES.ADMIN);
   if (!adminRole) return [];
 
-  const users = await UserModel.find({ role: adminRole._id, status: 'active' })
+  const filter: Record<string, unknown> = {
+    role: adminRole._id,
+    status: USER_STATUS.ACTIVE,
+  };
+  if (tenantId) {
+    filter.tenantId = tenantId;
+  }
+
+  const users = await UserModel.find(filter)
     .select('name email')
     .sort({ name: 1 })
     .lean();

@@ -1,7 +1,4 @@
-import { ROLES, USER_STATUS } from '@/constants';
 import { env } from '@/config/env';
-import { roleRepository } from '@/modules/role/role.repository';
-import { UserModel } from '@/modules/user/user.model';
 import { IMusicRelease } from '@/modules/music-release/music-release.model';
 import {
   MUSIC_RELEASE_STATUS,
@@ -10,12 +7,14 @@ import {
 import { NOTIFICATION_TYPE } from './notification.model';
 import { notificationRepository } from './notification.repository';
 import { buildReleaseStatusUpdateEmail, sendMail } from '@/utils/email';
+import { findElevatedRecipientIds } from '@/utils/elevatedRecipients';
 import { logger } from '@/config/logger';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
   name?: string;
+  tenantId?: string | null;
 }
 
 const CONTENT_DELIVERY_MODULE = {
@@ -87,18 +86,8 @@ function buildReleaseSummary(release: IMusicRelease, extra?: Record<string, stri
 }
 
 class ReleaseNotificationsService {
-  private async findSuperAdminIds(): Promise<string[]> {
-    const role = await roleRepository.findBySlug(ROLES.SUPER_ADMIN);
-    if (!role) return [];
-
-    const users = await UserModel.find({
-      role: role._id,
-      status: USER_STATUS.ACTIVE,
-    })
-      .select('_id')
-      .exec();
-
-    return users.map((u) => u._id.toString());
+  private findSuperAdminIds(tenantId?: string | null): Promise<string[]> {
+    return findElevatedRecipientIds(tenantId);
   }
 
   private buildContentDeliveryRoute(releaseId: string): string {
@@ -159,7 +148,7 @@ class ReleaseNotificationsService {
 
     try {
       const releaseId = release._id.toString();
-      const superAdminIds = await this.findSuperAdminIds();
+      const superAdminIds = await this.findSuperAdminIds(actor.tenantId);
       if (superAdminIds.length === 0) return;
 
       const creatorName = actor.name ?? 'Admin';
@@ -191,7 +180,7 @@ class ReleaseNotificationsService {
 
     try {
       const releaseId = release._id.toString();
-      const superAdminIds = await this.findSuperAdminIds();
+      const superAdminIds = await this.findSuperAdminIds(actor.tenantId);
       if (superAdminIds.length === 0) return;
 
       const creatorName = actor.name ?? 'Admin';

@@ -1,6 +1,5 @@
-import { ROLES, USER_STATUS } from '@/constants';
-import { IUser, UserModel } from '@/modules/user/user.model';
-import { roleRepository } from '@/modules/role/role.repository';
+import { findElevatedRecipientIds } from '@/utils/elevatedRecipients';
+import type { IUser } from '@/modules/user/user.model';
 import { NOTIFICATION_TYPE } from './notification.model';
 import { notificationRepository } from './notification.repository';
 import { logger } from '@/config/logger';
@@ -9,6 +8,7 @@ interface Actor {
   id: string;
   isSuperAdmin: boolean;
   name?: string;
+  tenantId?: string | null;
 }
 
 interface ChannelModuleConfig {
@@ -32,15 +32,8 @@ function formatStatusLabel(status: string): string {
 }
 
 class ChannelNotificationsService {
-  private async findSuperAdminIds(): Promise<string[]> {
-    const role = await roleRepository.findBySlug(ROLES.SUPER_ADMIN);
-    if (!role) return [];
-
-    const users = await UserModel.find({ role: role._id, status: USER_STATUS.ACTIVE })
-      .select('_id')
-      .exec();
-
-    return users.map((u) => u._id.toString());
+  private findSuperAdminIds(tenantId?: string | null): Promise<string[]> {
+    return findElevatedRecipientIds(tenantId);
   }
 
   private buildRoute(config: ChannelModuleConfig, entryId: string): string {
@@ -64,7 +57,7 @@ class ChannelNotificationsService {
           ? creator.name
           : actor.name ?? 'Admin';
 
-      const superAdminIds = await this.findSuperAdminIds();
+      const superAdminIds = await this.findSuperAdminIds(actor.tenantId);
       if (superAdminIds.length === 0) return;
 
       const payloads = superAdminIds.map((recipientId) => ({

@@ -34,6 +34,8 @@ export interface IUser extends Document {
   termsAccepted: boolean;
   termsAcceptedAt?: Date;
   role: Types.ObjectId;
+  /** Tenant this user belongs to. null for platform Super Admin (→ Master in Phase 2). */
+  tenantId?: Types.ObjectId | null;
   status: UserStatus;
   lastLogin?: Date;
   createdBy?: Types.ObjectId;
@@ -83,6 +85,12 @@ const userSchema = new Schema<IUser>(
     termsAccepted: { type: Boolean, default: false },
     termsAcceptedAt: { type: Date },
     role: { type: Schema.Types.ObjectId, ref: 'Role', required: true, index: true },
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      default: null,
+      index: true,
+    },
     status: {
       type: String,
       enum: Object.values(USER_STATUS),

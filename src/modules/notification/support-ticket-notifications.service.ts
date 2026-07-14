@@ -1,7 +1,4 @@
-import { ROLES, USER_STATUS } from '@/constants';
 import { env } from '@/config/env';
-import { roleRepository } from '@/modules/role/role.repository';
-import { UserModel } from '@/modules/user/user.model';
 import { ISupportTicket } from '@/modules/support-ticket/support-ticket.model';
 import { NOTIFICATION_TYPE } from './notification.model';
 import { notificationRepository } from './notification.repository';
@@ -10,6 +7,7 @@ import {
   buildSupportTicketStatusUpdatedEmail,
   sendMail,
 } from '@/utils/email';
+import { findElevatedRecipients } from '@/utils/elevatedRecipients';
 import { logger } from '@/config/logger';
 import type { SupportTicketStatus } from '@/modules/support-ticket/support-ticket.constants';
 import { SUPPORT_TICKET_ISSUE_TYPE_LABELS } from '@/modules/support-ticket/support-ticket.constants';
@@ -18,6 +16,7 @@ interface Actor {
   id: string;
   isSuperAdmin: boolean;
   name?: string;
+  tenantId?: string | null;
 }
 
 const HELP_SUPPORT_MODULE = {
@@ -64,24 +63,10 @@ function buildTicketDashboardUrl(ticketId: string): string {
 }
 
 class SupportTicketNotificationsService {
-  private async findSuperAdminRecipients(): Promise<Array<{ id: string; name: string; email: string }>> {
-    const role = await roleRepository.findBySlug(ROLES.SUPER_ADMIN);
-    if (!role) return [];
-
-    const users = await UserModel.find({
-      role: role._id,
-      status: USER_STATUS.ACTIVE,
-    })
-      .select('_id name email')
-      .exec();
-
-    return users
-      .map((user) => ({
-        id: user._id.toString(),
-        name: user.name?.trim() || 'Super Admin',
-        email: user.email?.trim() || '',
-      }))
-      .filter((user) => Boolean(user.email));
+  private findSuperAdminRecipients(
+    tenantId?: string | null,
+  ): Promise<Array<{ id: string; name: string; email: string }>> {
+    return findElevatedRecipients(tenantId);
   }
 
   async notifyTicketCreated(ticket: ISupportTicket, actor: Actor): Promise<void> {
@@ -98,7 +83,7 @@ class SupportTicketNotificationsService {
     };
 
     try {
-      const superAdmins = await this.findSuperAdminRecipients();
+      const superAdmins = await this.findSuperAdminRecipients(actor.tenantId);
       if (superAdmins.length === 0) return;
 
       const payloads = superAdmins.map((recipient) => ({
