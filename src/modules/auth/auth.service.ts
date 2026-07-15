@@ -155,7 +155,7 @@ class AuthService {
 
   /**
    * Step 1 of login. Validates credentials, then dispatches a LOGIN OTP.
-   * Super Admin accounts skip OTP and receive tokens immediately.
+   * Super Admin and Sub Admin accounts skip OTP and receive tokens immediately.
    */
   async login(input: LoginInput): Promise<LoginResult> {
     const user = await userRepository.findByEmail(input.email, true);
@@ -169,7 +169,8 @@ class AuthService {
 
     await this.markTermsAccepted(user._id.toString());
 
-    if (this.resolveRoleSlug(user) === ROLES.SUPER_ADMIN) {
+    const roleSlug = this.resolveRoleSlug(user);
+    if (roleSlug === ROLES.SUPER_ADMIN || roleSlug === ROLES.SUB_ADMIN) {
       const updated = await userRepository.updateById(user._id.toString(), { lastLogin: new Date() });
       return this.buildAuthResult(updated as IUser);
     }
@@ -369,8 +370,8 @@ class AuthService {
       micrCode?: string;
     },
   ): Promise<AuthUserDto> {
-    if (roleSlug === ROLES.SUPER_ADMIN) {
-      throw ApiError.forbidden('Bank details are not applicable for Super Admin accounts');
+    if (roleSlug === ROLES.SUPER_ADMIN || roleSlug === ROLES.SUB_ADMIN) {
+      throw ApiError.forbidden('Bank details are not applicable for this account');
     }
 
     const user = await userRepository.findByIdWithRole(userId);

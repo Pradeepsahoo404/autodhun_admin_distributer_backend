@@ -6,9 +6,13 @@ import { LabelUpdateListQueryDto } from './label-update.validator';
 import { PaginatedResult } from '@/types';
 import { ApiError } from '@/utils/ApiError';
 import { buildLabelUpdateEmail, sendMail } from '@/utils/email';
+import { canManagePlatformWorkflow, getScopeUserIds, type ScopeActor } from '@/utils/dataScope';
+
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
+  roleSlug: string;
 }
 
 interface RecordLabelUpdateInput {
@@ -66,11 +70,15 @@ class LabelUpdateService {
   }
 
   async list(query: LabelUpdateListQueryDto, actor: Actor): Promise<PaginatedResult<ILabelUpdate>> {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can view label update history');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can view label update history');
     }
 
     const filter: Record<string, unknown> = {};
+    const scopeIds = await getScopeUserIds(actor as ScopeActor);
+    if (scopeIds) {
+      filter.owner = { $in: scopeIds };
+    }
 
     if (query.search?.trim()) {
       const regex = { $regex: query.search.trim(), $options: 'i' };

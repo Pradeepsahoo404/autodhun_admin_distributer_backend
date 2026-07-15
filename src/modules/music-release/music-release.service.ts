@@ -37,12 +37,20 @@ import {
   normalizeReleaseIsrc,
 } from '@/utils/releaseIsrc';
 import { assertLabelsAccessible, ensureLabelOwnershipBackfill } from '@/utils/labelOwnership';
+import {
+  buildCreatedByScope,
+  assertCreatedByAccess,
+  canManagePlatformWorkflow,
+  getScopeUserIds,
+  type ScopeActor,
+} from '@/utils/dataScope';
 
 interface Actor {
   id: string;
   roleId: string;
   roleSlug: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
   name?: string;
 }
 
@@ -122,20 +130,8 @@ function primaryIsrc(item: IMusicRelease): string {
   return '';
 }
 
-function resolveOwnerId(createdBy: unknown): string {
-  if (!createdBy) return '';
-  if (typeof createdBy === 'object' && createdBy !== null && '_id' in createdBy) {
-    return String((createdBy as { _id: { toString(): string } })._id);
-  }
-  return String(createdBy);
-}
-
-function assertOwnership(item: IMusicRelease, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const ownerId = resolveOwnerId(item.createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only access your own releases');
-  }
+async function assertOwnership(item: IMusicRelease, actor: Actor): Promise<void> {
+  await assertCreatedByAccess(actor as ScopeActor, item.createdBy);
 }
 
 async function assertModuleAccess(
@@ -144,25 +140,40 @@ async function assertModuleAccess(
   action: 'view' | 'create' | 'update' | 'delete',
 ): Promise<void> {
   if (actor.isSuperAdmin) return;
-  const allowed = await permissionService.can(actor.roleId, actor.roleSlug, moduleSlug, action);
+  const allowed = await permissionService.can(
+    actor.roleId,
+    actor.roleSlug,
+    moduleSlug,
+    action,
+    actor.id,
+  );
   if (!allowed) {
     throw ApiError.forbidden(`No ${action} access to module: ${moduleSlug}`);
   }
 }
 
-function scopeForContext(context: MusicReleaseListContext, actor: Actor): Record<string, unknown> {
+async function scopeForContext(
+  context: MusicReleaseListContext,
+  actor: Actor,
+): Promise<Record<string, unknown>> {
   if (context === MUSIC_RELEASE_LIST_CONTEXT.CONTENT_DELIVERY) {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Content Delivery is for Super Admin only');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Content Delivery is for Super Admin or Sub Admin only');
     }
-    return { status: { $in: CONTENT_DELIVERY_STATUSES } };
+    const ownerScope = actor.isSuperAdmin
+      ? {}
+      : await buildCreatedByScope(actor as ScopeActor);
+    return { ...ownerScope, status: { $in: CONTENT_DELIVERY_STATUSES } };
   }
 
   if (context === MUSIC_RELEASE_LIST_CONTEXT.ASSETS_OVERVIEW) {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Assets overview is for Super Admin only');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Assets overview is for Super Admin or Sub Admin only');
     }
-    return { status: { $in: ASSETS_OVERVIEW_STATUSES } };
+    const ownerScope = actor.isSuperAdmin
+      ? {}
+      : await buildCreatedByScope(actor as ScopeActor);
+    return { ...ownerScope, status: { $in: ASSETS_OVERVIEW_STATUSES } };
   }
 
   if (context === MUSIC_RELEASE_LIST_CONTEXT.CORRECTION) {
@@ -179,7 +190,7 @@ class MusicReleaseService {
   async list(query: ListMusicReleasesQueryDto, actor: Actor): Promise<PaginatedResult<IMusicRelease>> {
     const moduleSlug = CONTEXT_MODULE_MAP[query.context];
     await assertModuleAccess(actor, moduleSlug, 'view');
-    const scope = scopeForContext(query.context, actor);
+    const scope = await scopeForContext(query.context, actor);
     return musicReleaseRepository.paginate(query, scope);
   }
 
@@ -187,7 +198,7 @@ class MusicReleaseService {
     await assertModuleAccess(actor, 'release', 'view');
     const item = await musicReleaseRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Release not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
     return item;
   }
 
@@ -271,6 +282,7 @@ class MusicReleaseService {
         .select('name normalizedName ownedBy status')
         .lean();
       const byNorm = new Map(labels.map((l) => [l.normalizedName, l]));
+      const scopeIds = await getScopeUserIds(actor as ScopeActor);
 
       for (const release of releases) {
         const label = byNorm.get(release.label.trim().toLowerCase());
@@ -280,7 +292,7 @@ class MusicReleaseService {
             field: 'Label',
             message: `Label "${release.label}" is not available. Create it from your release form first.`,
           });
-        } else if (String(label.ownedBy) !== actor.id) {
+        } else if (!scopeIds?.includes(String(label.ownedBy))) {
           allErrors.push({
             row: release.rowNumber,
             field: 'Label',
@@ -468,7 +480,7 @@ class MusicReleaseService {
     const item = await musicReleaseRepository.findById(id);
     if (!item) throw ApiError.notFound('Release not found');
 
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
 
     await assertLabelsAccessible(actor, dto.label);
 
@@ -526,8 +538,8 @@ class MusicReleaseService {
   }
 
   async updateStatus(id: string, dto: UpdateMusicReleaseStatusDto, actor: Actor): Promise<IMusicRelease> {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can change release status');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can change release status');
     }
 
     const item = await musicReleaseRepository.findById(id);
@@ -554,8 +566,8 @@ class MusicReleaseService {
     dto: BulkUpdateMusicReleaseStatusDto,
     actor: Actor,
   ): Promise<{ updated: number }> {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can change release status');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can change release status');
     }
 
     const releases = await musicReleaseRepository.findByIdsPopulated(dto.ids);
@@ -588,7 +600,7 @@ class MusicReleaseService {
     const item = await musicReleaseRepository.findById(id);
     if (!item) throw ApiError.notFound('Release not found');
 
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
 
     if (item.status !== MUSIC_RELEASE_STATUS.CORRECTION) {
       throw ApiError.forbidden('Only releases in correction can be deleted');
@@ -600,7 +612,7 @@ class MusicReleaseService {
   async exportCsv(query: ExportMusicReleasesQueryDto, actor: Actor): Promise<string> {
     const moduleSlug = CONTEXT_MODULE_MAP[query.context];
     await assertModuleAccess(actor, moduleSlug, 'view');
-    const scope = scopeForContext(query.context, actor);
+    const scope = await scopeForContext(query.context, actor);
 
     const items = await musicReleaseRepository.findForExport({
       ...scope,

@@ -9,6 +9,8 @@ class SupportTicketController {
     const result = await supportTicketService.list(req.query as unknown as ListSupportTicketsQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
       name: req.user!.name,
     });
     sendSuccess(res, result.items, 'Support tickets fetched', 200, {
@@ -23,6 +25,8 @@ class SupportTicketController {
     const item = await supportTicketService.getById(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
       name: req.user!.name,
     });
     sendSuccess(res, item, 'Support ticket fetched');
@@ -32,6 +36,8 @@ class SupportTicketController {
     const item = await supportTicketService.create(req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
       name: req.user!.name,
     });
     sendSuccess(res, item, 'Support ticket created', 201);
@@ -41,6 +47,8 @@ class SupportTicketController {
     const item = await supportTicketService.update(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
       name: req.user!.name,
     });
     sendSuccess(res, item, 'Support ticket updated');
@@ -50,6 +58,8 @@ class SupportTicketController {
     const item = await supportTicketService.updateStatus(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
       name: req.user!.name,
     });
     sendSuccess(res, item, 'Support ticket status updated');
@@ -59,6 +69,8 @@ class SupportTicketController {
     await supportTicketService.remove(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
       name: req.user!.name,
     });
     sendSuccess(res, null, 'Support ticket deleted');

@@ -12,22 +12,22 @@ import {
 import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
 import { assertLabelsAccessible } from '@/utils/labelOwnership';
+import {
+  buildCreatedByScope,
+  assertCreatedByAccess,
+  canManagePlatformWorkflow,
+  type ScopeActor,
+} from '@/utils/dataScope';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
+  roleSlug: string;
 }
 
-function assertOwnership(item: IManualClaiming, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const createdBy = item.createdBy as unknown;
-  const ownerId =
-    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
-      ? String((createdBy as { _id: { toString(): string } })._id)
-      : String(createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only modify your own manual claiming entries');
-  }
+async function assertOwnership(item: IManualClaiming, actor: Actor): Promise<void> {
+  await assertCreatedByAccess(actor as ScopeActor, item.createdBy);
 }
 
 function escapeCsv(value: string): string {
@@ -42,18 +42,18 @@ function formatDateTime(date: Date): string {
 }
 
 class ManualClaimingService {
-  private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+  private async scope(actor: Actor) {
+    return buildCreatedByScope(actor as ScopeActor);
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IManualClaiming>> {
-    return manualClaimingRepository.paginate(query, this.scope(actor));
+    return manualClaimingRepository.paginate(query, await this.scope(actor));
   }
 
   async getById(id: string, actor: Actor): Promise<IManualClaiming> {
     const item = await manualClaimingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Manual claiming entry not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
     return item;
   }
 
@@ -79,7 +79,7 @@ class ManualClaimingService {
   ): Promise<IManualClaiming> {
     const item = await manualClaimingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Manual claiming entry not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
 
     await assertLabelsAccessible(actor, dto.labelName);
 
@@ -92,12 +92,14 @@ class ManualClaimingService {
   }
 
   async updateStatus(id: string, dto: UpdateStatusDto, actor: Actor): Promise<IManualClaiming> {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can change manual claiming status');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can change manual claiming status');
     }
 
     const item = await manualClaimingRepository.findById(id);
     if (!item) throw ApiError.notFound('Manual claiming entry not found');
+
+    await assertOwnership(item, actor);
 
     await manualClaimingRepository.updateById(id, {
       status: dto.status,
@@ -118,13 +120,13 @@ class ManualClaimingService {
   async remove(id: string, actor: Actor): Promise<void> {
     const item = await manualClaimingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Manual claiming entry not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
     await manualClaimingRepository.deleteById(id);
   }
 
   async exportCsv(query: ExportQueryDto, actor: Actor): Promise<string> {
     const items = await manualClaimingRepository.findForExport({
-      ...this.scope(actor),
+      ...(await this.scope(actor)),
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
     });

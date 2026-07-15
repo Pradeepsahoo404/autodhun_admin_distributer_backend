@@ -9,6 +9,8 @@ class AllowlistController {
     const result = await allowlistService.list(req.query as unknown as ListQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, result.items, 'Allowlist entries fetched', 200, {
       total: result.total,
@@ -22,6 +24,8 @@ class AllowlistController {
     const item = await allowlistService.getById(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Allowlist entry fetched');
   });
@@ -30,6 +34,8 @@ class AllowlistController {
     const item = await allowlistService.create(req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Allowlist entry created', 201);
   });
@@ -38,6 +44,8 @@ class AllowlistController {
     const item = await allowlistService.update(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Allowlist entry updated');
   });
@@ -46,6 +54,8 @@ class AllowlistController {
     const item = await allowlistService.updateStatus(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Status updated');
   });
@@ -54,6 +64,8 @@ class AllowlistController {
     await allowlistService.remove(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, null, 'Allowlist entry deleted');
   });
@@ -62,6 +74,8 @@ class AllowlistController {
     const csv = await allowlistService.exportCsv(req.query as unknown as ExportQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
 
     const filename = `allowlist-${new Date().toISOString().slice(0, 10)}.csv`;

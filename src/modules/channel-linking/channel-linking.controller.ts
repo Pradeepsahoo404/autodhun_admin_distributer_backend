@@ -9,6 +9,8 @@ class ChannelLinkingController {
     const result = await channelLinkingService.list(req.query as unknown as ListQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, result.items, 'Channel linking entries fetched', 200, {
       total: result.total,
@@ -22,6 +24,8 @@ class ChannelLinkingController {
     const item = await channelLinkingService.getById(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Channel linking entry fetched');
   });
@@ -30,6 +34,8 @@ class ChannelLinkingController {
     const item = await channelLinkingService.create(req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Channel linking entry submitted — status set to In Process', 201);
   });
@@ -38,6 +44,8 @@ class ChannelLinkingController {
     const item = await channelLinkingService.update(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Channel linking entry updated');
   });
@@ -46,6 +54,8 @@ class ChannelLinkingController {
     const item = await channelLinkingService.updateStatus(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Status updated');
   });
@@ -54,6 +64,8 @@ class ChannelLinkingController {
     await channelLinkingService.remove(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, null, 'Channel linking entry deleted');
   });
@@ -62,6 +74,8 @@ class ChannelLinkingController {
     const csv = await channelLinkingService.exportCsv(req.query as unknown as ExportQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
 
     const filename = `channel-linking-${new Date().toISOString().slice(0, 10)}.csv`;

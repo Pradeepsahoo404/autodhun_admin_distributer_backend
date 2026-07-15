@@ -9,6 +9,8 @@ class ProfileLinkingController {
     const result = await profileLinkingService.list(req.query as unknown as ListQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, result.items, 'Profile linking entries fetched', 200, {
       total: result.total,
@@ -22,6 +24,8 @@ class ProfileLinkingController {
     const item = await profileLinkingService.getById(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Profile linking entry fetched');
   });
@@ -30,6 +34,8 @@ class ProfileLinkingController {
     const item = await profileLinkingService.create(req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Profile linking entry created', 201);
   });
@@ -38,6 +44,8 @@ class ProfileLinkingController {
     const item = await profileLinkingService.update(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Profile linking entry updated');
   });
@@ -46,6 +54,8 @@ class ProfileLinkingController {
     const item = await profileLinkingService.updateStatus(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Status updated');
   });
@@ -54,6 +64,8 @@ class ProfileLinkingController {
     await profileLinkingService.remove(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, null, 'Profile linking entry deleted');
   });
@@ -62,6 +74,8 @@ class ProfileLinkingController {
     const csv = await profileLinkingService.exportCsv(req.query as unknown as ExportQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
 
     const filename = `profile-linking-${new Date().toISOString().slice(0, 10)}.csv`;

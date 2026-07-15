@@ -1,14 +1,13 @@
-import { ROLES, USER_STATUS } from '@/constants';
 import {
   buildIssuesEntrySummary,
   ISSUES_MODULES,
   IssuesModuleSlug,
 } from '@/constants/issuesModules';
-import { roleRepository } from '@/modules/role/role.repository';
-import { UserModel } from '@/modules/user/user.model';
 import { NOTIFICATION_TYPE } from './notification.model';
 import { notificationRepository } from './notification.repository';
 import { logger } from '@/config/logger';
+import { resolveUserId } from './issues-notifications.resolve';
+import { findOversightRecipientIds } from './notification-recipients';
 
 interface Actor {
   id: string;
@@ -23,20 +22,6 @@ function formatOwnershipLabel(ownership: string): string {
 }
 
 class IssuesNotificationsService {
-  private async findSuperAdminIds(): Promise<string[]> {
-    const role = await roleRepository.findBySlug(ROLES.SUPER_ADMIN);
-    if (!role) return [];
-
-    const users = await UserModel.find({
-      role: role._id,
-      status: USER_STATUS.ACTIVE,
-    })
-      .select('_id')
-      .exec();
-
-    return users.map((u) => u._id.toString());
-  }
-
   private buildRoute(moduleSlug: IssuesModuleSlug, entryId: string): string {
     return `${ISSUES_MODULES[moduleSlug].route}?entry=${entryId}`;
   }
@@ -47,8 +32,6 @@ class IssuesNotificationsService {
     assignedToId: string,
     actor: Actor,
   ): Promise<void> {
-    if (!actor.isSuperAdmin) return;
-
     try {
       const config = ISSUES_MODULES[moduleSlug];
       const entryId = entry._id.toString();
@@ -85,10 +68,17 @@ class IssuesNotificationsService {
       const summary = buildIssuesEntrySummary(moduleSlug, { ...entry, ownership });
       const ownershipLabel = formatOwnershipLabel(ownership);
 
-      const superAdminIds = await this.findSuperAdminIds();
-      if (superAdminIds.length === 0) return;
+      const oversightRecipientIds = await findOversightRecipientIds(actor.id, config.slug);
+      const creatorId = resolveUserId(entry.createdBy);
+      const recipientIds = [
+        ...new Set([
+          ...oversightRecipientIds,
+          ...(creatorId && creatorId !== actor.id ? [creatorId] : []),
+        ]),
+      ];
+      if (recipientIds.length === 0) return;
 
-      const payloads = superAdminIds.map((recipientId) => ({
+      const payloads = recipientIds.map((recipientId) => ({
         recipient: recipientId as never,
         type: NOTIFICATION_TYPE.ISSUES_OWNERSHIP_UPDATED,
         moduleSlug: config.slug,

@@ -5,7 +5,12 @@ import { sendSuccess } from '@/utils/ApiResponse';
 import { LabelUpdateListQueryDto } from './label-update.validator';
 
 function updateActor(req: Request) {
-  return { id: req.user!.id, isSuperAdmin: req.user!.isSuperAdmin };
+  return {
+    id: req.user!.id,
+    isSuperAdmin: req.user!.isSuperAdmin,
+    isSubAdmin: req.user!.isSubAdmin,
+    roleSlug: req.user!.role,
+  };
 }
 
 class LabelUpdateController {

@@ -15,7 +15,13 @@ const envSchema = z.object({
 
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
 
+  /** Primary frontend origin (emails, redirects). */
   CLIENT_URL: z.string().url().default('http://localhost:3000'),
+  /**
+   * Extra allowed CORS origins, comma-separated.
+   * Example: `http://localhost:3001,http://127.0.0.1:3000`
+   */
+  CLIENT_URLS: z.string().optional().default(''),
 
   JWT_ACCESS_SECRET: z.string().min(10, 'JWT_ACCESS_SECRET is too short'),
   JWT_REFRESH_SECRET: z.string().min(10, 'JWT_REFRESH_SECRET is too short'),

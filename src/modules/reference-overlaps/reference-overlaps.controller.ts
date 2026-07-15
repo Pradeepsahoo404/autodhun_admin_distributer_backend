@@ -9,6 +9,8 @@ class ReferenceOverlapsController {
     const result = await referenceOverlapsService.list(req.query as unknown as ListQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, result.items, 'Reference overlaps fetched', 200, {
       total: result.total,
@@ -22,6 +24,8 @@ class ReferenceOverlapsController {
     const item = await referenceOverlapsService.getById(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Reference overlap fetched');
   });
@@ -30,6 +34,8 @@ class ReferenceOverlapsController {
     const item = await referenceOverlapsService.create(req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Reference overlap created', 201);
   });
@@ -38,6 +44,8 @@ class ReferenceOverlapsController {
     const item = await referenceOverlapsService.update(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Reference overlap updated');
   });
@@ -46,6 +54,8 @@ class ReferenceOverlapsController {
     const item = await referenceOverlapsService.updateStatus(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Status updated');
   });
@@ -54,6 +64,8 @@ class ReferenceOverlapsController {
     const item = await referenceOverlapsService.updateOwnership(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Ownership updated');
   });
@@ -62,6 +74,8 @@ class ReferenceOverlapsController {
     await referenceOverlapsService.remove(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, null, 'Reference overlap deleted');
   });
@@ -70,6 +84,8 @@ class ReferenceOverlapsController {
     const csv = await referenceOverlapsService.exportCsv(req.query as unknown as ExportQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
 
     const filename = `reference-overlaps-${new Date().toISOString().slice(0, 10)}.csv`;

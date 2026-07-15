@@ -8,6 +8,8 @@ function releaseActor(req: Request) {
   return {
     id: req.user!.id,
     isSuperAdmin: req.user!.isSuperAdmin,
+    isSubAdmin: req.user!.isSubAdmin,
+    roleSlug: req.user!.role,
     name: req.user!.name,
   };
 }

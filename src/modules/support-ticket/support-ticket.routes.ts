@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { supportTicketController } from './support-ticket.controller';
 import { authenticate } from '@/middlewares/auth.middleware';
-import { checkPermission, superAdminOnly } from '@/middlewares/rbac.middleware';
+import { checkPermission } from '@/middlewares/rbac.middleware';
 import { validate } from '@/middlewares/validate.middleware';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { ApiError } from '@/utils/ApiError';
@@ -52,7 +52,7 @@ router.put(
 );
 router.patch(
   '/:id/status',
-  superAdminOnly,
+  checkPermission(MODULE, 'update'),
   validate({ params: idParamSchema, body: updateSupportTicketStatusSchema }),
   supportTicketController.updateStatus,
 );

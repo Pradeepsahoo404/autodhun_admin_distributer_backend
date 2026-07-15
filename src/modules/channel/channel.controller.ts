@@ -9,6 +9,8 @@ class ChannelController {
     const result = await channelService.list(req.query as unknown as ListQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, result.items, 'Channels fetched', 200, {
       total: result.total,
@@ -22,6 +24,8 @@ class ChannelController {
     const item = await channelService.getById(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Channel fetched');
   });
@@ -30,6 +34,8 @@ class ChannelController {
     const item = await channelService.create(req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Channel created', 201);
   });
@@ -38,6 +44,8 @@ class ChannelController {
     const item = await channelService.update(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Channel updated');
   });
@@ -46,6 +54,8 @@ class ChannelController {
     const item = await channelService.updateStatus(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Status updated');
   });
@@ -54,6 +64,8 @@ class ChannelController {
     await channelService.remove(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, null, 'Channel deleted');
   });
@@ -62,6 +74,8 @@ class ChannelController {
     const csv = await channelService.exportCsv(req.query as unknown as ExportQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
 
     const filename = `channels-${new Date().toISOString().slice(0, 10)}.csv`;

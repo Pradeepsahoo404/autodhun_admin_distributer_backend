@@ -1,5 +1,6 @@
 import { Model } from 'mongoose';
 import { ROLES } from '@/constants';
+import { buildCreatedByScope } from '@/utils/dataScope';
 import { YoutubeClaimReleaseModel } from '@/modules/youtube-claim-release/youtube-claim-release.model';
 import { FacebookClaimReleaseModel } from '@/modules/facebook-claim-release/facebook-claim-release.model';
 import { ContentIdModel } from '@/modules/content-id/content-id.model';
@@ -189,7 +190,15 @@ class RightsManagerAnalyticsService {
     if (visibleSlugs.length === 0) return null;
 
     const isSuperAdmin = actor.roleSlug === ROLES.SUPER_ADMIN;
-    const scope = isSuperAdmin ? {} : { createdBy: actor.userId };
+    const isSubAdmin = actor.roleSlug === ROLES.SUB_ADMIN;
+    const scope = isSuperAdmin
+      ? {}
+      : await buildCreatedByScope({
+          id: actor.userId,
+          roleSlug: actor.roleSlug,
+          isSuperAdmin: false,
+          isSubAdmin,
+        });
     const slugSet = new Set(visibleSlugs);
 
     const modulesToQuery = RIGHTS_MANAGER_MODULES.filter((mod) => slugSet.has(mod.slug));
@@ -226,7 +235,11 @@ class RightsManagerAnalyticsService {
 
     return {
       isSuperAdmin,
-      scopeLabel: isSuperAdmin ? 'All entries across admins' : 'Your submitted entries',
+      scopeLabel: isSuperAdmin
+        ? 'All entries across admins'
+        : isSubAdmin
+          ? 'Entries in your scope'
+          : 'Your submitted entries',
       summary,
       modules: moduleStats,
       dailyTrend7,

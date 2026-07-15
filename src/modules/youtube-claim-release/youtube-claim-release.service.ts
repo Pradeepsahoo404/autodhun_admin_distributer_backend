@@ -13,22 +13,22 @@ import {
 import { IUser } from '@/modules/user/user.model';
 import { rightsManagerNotificationsService } from '@/modules/notification/rights-manager-notifications.service';
 import { assertLabelsAccessible } from '@/utils/labelOwnership';
+import {
+  buildCreatedByScope,
+  assertCreatedByAccess,
+  canManagePlatformWorkflow,
+  type ScopeActor,
+} from '@/utils/dataScope';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
+  roleSlug: string;
 }
 
-function assertOwnership(item: IYoutubeClaimRelease, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const createdBy = item.createdBy as unknown;
-  const ownerId =
-    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
-      ? String((createdBy as { _id: { toString(): string } })._id)
-      : String(createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only modify your own claim releases');
-  }
+async function assertOwnership(item: IYoutubeClaimRelease, actor: Actor): Promise<void> {
+  await assertCreatedByAccess(actor as ScopeActor, item.createdBy);
 }
 
 function escapeCsv(value: string): string {
@@ -49,18 +49,18 @@ function assertLabelsMatch(sender: string, receiver: string): void {
 }
 
 class YoutubeClaimReleaseService {
-  private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+  private async scope(actor: Actor) {
+    return buildCreatedByScope(actor as ScopeActor);
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IYoutubeClaimRelease>> {
-    return youtubeClaimReleaseRepository.paginate(query, this.scope(actor));
+    return youtubeClaimReleaseRepository.paginate(query, await this.scope(actor));
   }
 
   async getById(id: string, actor: Actor): Promise<IYoutubeClaimRelease> {
     const item = await youtubeClaimReleaseRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Claim release not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
     return item;
   }
 
@@ -87,7 +87,7 @@ class YoutubeClaimReleaseService {
   ): Promise<IYoutubeClaimRelease> {
     const item = await youtubeClaimReleaseRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Claim release not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
 
     const sender = dto.senderLabelName ?? item.senderLabelName;
     const receiver = dto.receiverLabelName ?? item.receiverLabelName;
@@ -103,12 +103,14 @@ class YoutubeClaimReleaseService {
   }
 
   async updateStatus(id: string, dto: UpdateStatusDto, actor: Actor): Promise<IYoutubeClaimRelease> {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can change claim release status');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can change claim release status');
     }
 
     const item = await youtubeClaimReleaseRepository.findById(id);
     if (!item) throw ApiError.notFound('Claim release not found');
+
+    await assertOwnership(item, actor);
 
     await youtubeClaimReleaseRepository.updateById(id, {
       status: dto.status,
@@ -129,13 +131,13 @@ class YoutubeClaimReleaseService {
   async remove(id: string, actor: Actor): Promise<void> {
     const item = await youtubeClaimReleaseRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Claim release not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
     await youtubeClaimReleaseRepository.deleteById(id);
   }
 
   async exportCsv(query: ExportQueryDto, actor: Actor): Promise<string> {
     const items = await youtubeClaimReleaseRepository.findForExport({
-      ...this.scope(actor),
+      ...(await this.scope(actor)),
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
     });

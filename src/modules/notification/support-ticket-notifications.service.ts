@@ -1,7 +1,4 @@
-import { ROLES, USER_STATUS } from '@/constants';
 import { env } from '@/config/env';
-import { roleRepository } from '@/modules/role/role.repository';
-import { UserModel } from '@/modules/user/user.model';
 import { ISupportTicket } from '@/modules/support-ticket/support-ticket.model';
 import { NOTIFICATION_TYPE } from './notification.model';
 import { notificationRepository } from './notification.repository';
@@ -13,10 +10,12 @@ import {
 import { logger } from '@/config/logger';
 import type { SupportTicketStatus } from '@/modules/support-ticket/support-ticket.constants';
 import { SUPPORT_TICKET_ISSUE_TYPE_LABELS } from '@/modules/support-ticket/support-ticket.constants';
+import { findOversightRecipients } from './notification-recipients';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin?: boolean;
   name?: string;
 }
 
@@ -64,26 +63,6 @@ function buildTicketDashboardUrl(ticketId: string): string {
 }
 
 class SupportTicketNotificationsService {
-  private async findSuperAdminRecipients(): Promise<Array<{ id: string; name: string; email: string }>> {
-    const role = await roleRepository.findBySlug(ROLES.SUPER_ADMIN);
-    if (!role) return [];
-
-    const users = await UserModel.find({
-      role: role._id,
-      status: USER_STATUS.ACTIVE,
-    })
-      .select('_id name email')
-      .exec();
-
-    return users
-      .map((user) => ({
-        id: user._id.toString(),
-        name: user.name?.trim() || 'Super Admin',
-        email: user.email?.trim() || '',
-      }))
-      .filter((user) => Boolean(user.email));
-  }
-
   async notifyTicketCreated(ticket: ISupportTicket, actor: Actor): Promise<void> {
     if (actor.isSuperAdmin) return;
 
@@ -98,10 +77,10 @@ class SupportTicketNotificationsService {
     };
 
     try {
-      const superAdmins = await this.findSuperAdminRecipients();
-      if (superAdmins.length === 0) return;
+      const recipients = await findOversightRecipients(actor.id, HELP_SUPPORT_MODULE.slug);
+      if (recipients.length === 0) return;
 
-      const payloads = superAdmins.map((recipient) => ({
+      const payloads = recipients.map((recipient) => ({
         recipient: recipient.id as never,
         type: NOTIFICATION_TYPE.SUPPORT_TICKET_CREATED,
         moduleSlug: HELP_SUPPORT_MODULE.slug,
@@ -116,13 +95,13 @@ class SupportTicketNotificationsService {
 
       await notificationRepository.createMany(payloads);
     } catch (error) {
-      logger.error('Failed to notify super admins of new support ticket', { error });
+      logger.error('Failed to notify reviewers of new support ticket', { error });
     }
 
     try {
-      const superAdmins = await this.findSuperAdminRecipients();
+      const recipients = await findOversightRecipients(actor.id, HELP_SUPPORT_MODULE.slug);
       await Promise.all(
-        superAdmins.map(async (recipient) => {
+        recipients.filter((recipient) => Boolean(recipient.email)).map(async (recipient) => {
           const { subject, html, text } = buildSupportTicketCreatedEmail({
             recipientName: recipient.name,
             ticketNumber: ticket.ticketNumber,
@@ -135,7 +114,7 @@ class SupportTicketNotificationsService {
         }),
       );
     } catch (error) {
-      logger.error('Failed to email super admins of new support ticket', { error });
+      logger.error('Failed to email reviewers of new support ticket', { error });
     }
   }
 
@@ -146,7 +125,7 @@ class SupportTicketNotificationsService {
     summary: Record<string, string> = {},
     resolutionNote?: string,
   ): Promise<void> {
-    if (!actor.isSuperAdmin) return;
+    if (!actor.isSuperAdmin && !actor.isSubAdmin) return;
 
     const owner = resolveOwner(ticket.createdBy);
     if (!owner || owner.id === actor.id) return;

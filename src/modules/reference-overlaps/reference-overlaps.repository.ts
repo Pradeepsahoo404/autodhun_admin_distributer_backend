@@ -4,7 +4,6 @@ import { PaginatedResult } from '@/types';
 import { ListQueryDto } from './reference-overlaps.validator';
 
 export interface ReferenceOverlapListFilter {
-  assignedTo?: string;
   search?: string;
   status?: string;
   ownership?: string;
@@ -12,21 +11,28 @@ export interface ReferenceOverlapListFilter {
   dateTo?: string;
 }
 
-function buildFilter(params: ReferenceOverlapListFilter): Record<string, unknown> {
-  const filter: Record<string, unknown> = {};
-
-  if (params.assignedTo) {
-    filter.assignedTo = params.assignedTo;
-  }
+function buildFilter(
+  params: ReferenceOverlapListFilter,
+  scope: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const filter: Record<string, unknown> = { ...scope };
 
   if (params.search) {
-    filter.$or = [
+    const searchOr = [
       { otherParty: { $regex: params.search, $options: 'i' } },
       { assetName: { $regex: params.search, $options: 'i' } },
       { overlappingAssetName: { $regex: params.search, $options: 'i' } },
       { labelName: { $regex: params.search, $options: 'i' } },
       { isrcCode: { $regex: params.search, $options: 'i' } },
     ];
+
+    if (filter.$or) {
+      const scopeOr = filter.$or;
+      delete filter.$or;
+      filter.$and = [{ $or: scopeOr }, { $or: searchOr }];
+    } else {
+      filter.$or = searchOr;
+    }
   }
 
   if (params.status) {
@@ -66,17 +72,19 @@ class ReferenceOverlapsRepository extends BaseRepository<IReferenceOverlap> {
 
   async paginate(
     query: ListQueryDto,
-    scope: ReferenceOverlapListFilter,
+    scope: Record<string, unknown>,
   ): Promise<PaginatedResult<IReferenceOverlap>> {
     const { page, limit, sortBy = 'createdAt', sortOrder = 'desc' } = query;
-    const filter = buildFilter({
-      ...scope,
-      search: query.search,
-      status: query.status,
-      ownership: query.ownership,
-      dateFrom: query.dateFrom,
-      dateTo: query.dateTo,
-    });
+    const filter = buildFilter(
+      {
+        search: query.search,
+        status: query.status,
+        ownership: query.ownership,
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+      },
+      scope,
+    );
 
     const [items, total] = await Promise.all([
       ReferenceOverlapModel.find(filter)
@@ -92,8 +100,11 @@ class ReferenceOverlapsRepository extends BaseRepository<IReferenceOverlap> {
     return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  findForExport(scope: ReferenceOverlapListFilter): Promise<IReferenceOverlap[]> {
-    const filter = buildFilter(scope);
+  findForExport(
+    scope: Record<string, unknown>,
+    params: ReferenceOverlapListFilter = {},
+  ): Promise<IReferenceOverlap[]> {
+    const filter = buildFilter(params, scope);
     return ReferenceOverlapModel.find(filter)
       .populate('assignedTo', 'name email')
       .populate('createdBy', 'name email')

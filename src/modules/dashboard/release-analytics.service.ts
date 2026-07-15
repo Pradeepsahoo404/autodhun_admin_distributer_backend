@@ -4,6 +4,7 @@ import {
   type MusicReleaseStatus,
 } from '@/modules/music-release/music-release.constants';
 import { ROLES } from '@/constants';
+import { buildCreatedByScope } from '@/utils/dataScope';
 
 const DASHBOARD_RELEASE_STATUSES: MusicReleaseStatus[] = [
   MUSIC_RELEASE_STATUS.IN_REVIEW,
@@ -62,9 +63,10 @@ class ReleaseAnalyticsService {
     options: { includeAdmin: boolean; includeContentDelivery: boolean },
   ): Promise<ReleaseAnalyticsBundle> {
     const isSuperAdmin = actor.roleSlug === ROLES.SUPER_ADMIN;
+    const isSubAdmin = actor.roleSlug === ROLES.SUB_ADMIN;
 
     let admin: ReleaseAnalytics | null = null;
-    if (options.includeAdmin && !isSuperAdmin) {
+    if (options.includeAdmin && !isSuperAdmin && !isSubAdmin) {
       const raw = await musicReleaseRepository.countByStatus({ createdBy: actor.userId });
       const counts = buildCounts(raw);
       admin = {
@@ -76,12 +78,20 @@ class ReleaseAnalyticsService {
     }
 
     let contentDelivery: ReleaseAnalytics | null = null;
-    if (options.includeContentDelivery && isSuperAdmin) {
-      const raw = await musicReleaseRepository.countByStatus({});
+    if (options.includeContentDelivery && (isSuperAdmin || isSubAdmin)) {
+      const scope = isSuperAdmin
+        ? {}
+        : await buildCreatedByScope({
+            id: actor.userId,
+            roleSlug: actor.roleSlug,
+            isSuperAdmin: false,
+            isSubAdmin: true,
+          });
+      const raw = await musicReleaseRepository.countByStatus(scope);
       const counts = buildCounts(raw);
       contentDelivery = {
         variant: 'content-delivery',
-        scopeLabel: 'All releases across admins',
+        scopeLabel: isSuperAdmin ? 'All releases across admins' : 'Releases in your scope',
         total: sumCounts(counts),
         counts,
       };

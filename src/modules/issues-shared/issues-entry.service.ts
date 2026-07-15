@@ -5,6 +5,13 @@ import { IUser } from '@/modules/user/user.model';
 import { userRepository } from '@/modules/user/user.repository';
 import { ROLES } from '@/constants';
 import { issuesNotificationsService, resolveUserId } from '@/modules/notification/issues-notifications.service';
+import {
+  buildAssignedToScope,
+  canManagePlatformWorkflow,
+  getScopeUserIds,
+  resolveOwnerId,
+  type ScopeActor,
+} from '@/utils/dataScope';
 import { ISSUES_ENTRY_STATUS } from './issues-entry.constants';
 import { IIssuesEntry } from './issues-entry.model';
 import { IssuesEntryRepository } from './issues-entry.repository';
@@ -20,6 +27,8 @@ import {
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
+  roleSlug: string;
   name?: string;
 }
 
@@ -47,8 +56,8 @@ function formatOwnership(value: string): string {
   return 'Pending';
 }
 
-function assertSuperAdmin(actor: Actor, message: string): void {
-  if (!actor.isSuperAdmin) {
+function assertPlatformWorkflow(actor: Actor, message: string): void {
+  if (!canManagePlatformWorkflow(actor as ScopeActor)) {
     throw ApiError.forbidden(message);
   }
 }
@@ -60,7 +69,7 @@ function assertAssignedAdmin(item: IIssuesEntry, actor: Actor): void {
   }
 }
 
-async function assertAdminUser(userId: string): Promise<void> {
+async function assertAdminUser(userId: string, actor?: Actor): Promise<void> {
   const user = await userRepository.findByIdWithRole(userId);
   if (!user) throw ApiError.badRequest('Assigned admin not found');
 
@@ -69,6 +78,25 @@ async function assertAdminUser(userId: string): Promise<void> {
   if (slug !== ROLES.ADMIN) {
     throw ApiError.badRequest('Assigned user must be an Admin');
   }
+
+  if (actor?.isSubAdmin) {
+    const createdBy = resolveOwnerId(user.createdBy);
+    if (createdBy !== actor.id) {
+      throw ApiError.forbidden('You can only assign admins you created');
+    }
+  }
+}
+
+async function assertSubAdminScopeAccess(item: IIssuesEntry, actor: Actor): Promise<void> {
+  const createdById = resolveOwnerId(item.createdBy);
+  if (createdById === actor.id) return;
+
+  const assignedId = resolveUserId(item.assignedTo);
+  const scopeIds = await getScopeUserIds(actor as ScopeActor);
+  const childAdminIds = (scopeIds ?? []).filter((id) => id !== actor.id);
+  if (assignedId && childAdminIds.includes(assignedId)) return;
+
+  throw ApiError.forbidden('You do not have access to this record');
 }
 
 export class IssuesEntryService {
@@ -77,8 +105,8 @@ export class IssuesEntryService {
     private readonly meta: IssuesEntryModuleMeta,
   ) {}
 
-  private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { assignedTo: actor.id };
+  private async scope(actor: Actor) {
+    return buildAssignedToScope(actor as ScopeActor);
   }
 
   private notFoundMessage(): string {
@@ -86,23 +114,30 @@ export class IssuesEntryService {
   }
 
   async list(query: IssuesEntryListQueryDto, actor: Actor): Promise<PaginatedResult<IIssuesEntry>> {
-    return this.repository.paginate(query, this.scope(actor));
+    return this.repository.paginate(query, await this.scope(actor));
   }
 
   async getById(id: string, actor: Actor): Promise<IIssuesEntry> {
     const item = await this.repository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound(this.notFoundMessage());
 
-    if (!actor.isSuperAdmin) {
-      assertAssignedAdmin(item, actor);
+    if (actor.isSuperAdmin) return item;
+
+    if (actor.isSubAdmin) {
+      await assertSubAdminScopeAccess(item, actor);
+      return item;
     }
 
+    assertAssignedAdmin(item, actor);
     return item;
   }
 
   async create(dto: CreateIssuesEntryDto, actor: Actor): Promise<IIssuesEntry> {
-    assertSuperAdmin(actor, `Only Super Admin can create ${this.meta.pluralLabel.toLowerCase()}`);
-    await assertAdminUser(dto.assignedTo);
+    assertPlatformWorkflow(
+      actor,
+      `Only Super Admin or Sub Admin can create ${this.meta.pluralLabel.toLowerCase()}`,
+    );
+    await assertAdminUser(dto.assignedTo, actor);
 
     const created = await this.repository.create({
       ...dto,
@@ -127,13 +162,20 @@ export class IssuesEntryService {
   }
 
   async update(id: string, dto: UpdateIssuesEntryDto, actor: Actor): Promise<IIssuesEntry> {
-    assertSuperAdmin(actor, `Only Super Admin can edit ${this.meta.pluralLabel.toLowerCase()}`);
+    assertPlatformWorkflow(
+      actor,
+      `Only Super Admin or Sub Admin can edit ${this.meta.pluralLabel.toLowerCase()}`,
+    );
 
     const item = await this.repository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound(this.notFoundMessage());
 
+    if (actor.isSubAdmin) {
+      await assertSubAdminScopeAccess(item, actor);
+    }
+
     if (dto.assignedTo) {
-      await assertAdminUser(dto.assignedTo);
+      await assertAdminUser(dto.assignedTo, actor);
     }
 
     await this.repository.updateById(id, {
@@ -146,10 +188,17 @@ export class IssuesEntryService {
   }
 
   async updateStatus(id: string, dto: UpdateIssuesEntryStatusDto, actor: Actor): Promise<IIssuesEntry> {
-    assertSuperAdmin(actor, `Only Super Admin can change ${this.meta.singularLabel.toLowerCase()} status`);
+    assertPlatformWorkflow(
+      actor,
+      `Only Super Admin or Sub Admin can change ${this.meta.singularLabel.toLowerCase()} status`,
+    );
 
     const item = await this.repository.findById(id);
     if (!item) throw ApiError.notFound(this.notFoundMessage());
+
+    if (actor.isSubAdmin) {
+      await assertSubAdminScopeAccess(item, actor);
+    }
 
     await this.repository.updateById(id, {
       status: dto.status,
@@ -165,7 +214,7 @@ export class IssuesEntryService {
     dto: UpdateIssuesEntryOwnershipDto,
     actor: Actor,
   ): Promise<IIssuesEntry> {
-    if (actor.isSuperAdmin) {
+    if (canManagePlatformWorkflow(actor as ScopeActor)) {
       throw ApiError.forbidden('Only assigned Admin can update ownership');
     }
 
@@ -192,16 +241,23 @@ export class IssuesEntryService {
   }
 
   async remove(id: string, actor: Actor): Promise<void> {
-    assertSuperAdmin(actor, `Only Super Admin can delete ${this.meta.pluralLabel.toLowerCase()}`);
+    assertPlatformWorkflow(
+      actor,
+      `Only Super Admin or Sub Admin can delete ${this.meta.pluralLabel.toLowerCase()}`,
+    );
 
     const item = await this.repository.findById(id);
     if (!item) throw ApiError.notFound(this.notFoundMessage());
+
+    if (actor.isSubAdmin) {
+      await assertSubAdminScopeAccess(item, actor);
+    }
+
     await this.repository.deleteById(id);
   }
 
   async exportCsv(query: IssuesEntryExportQueryDto, actor: Actor): Promise<string> {
-    const items = await this.repository.findForExport({
-      ...this.scope(actor),
+    const items = await this.repository.findForExport(await this.scope(actor), {
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
     });

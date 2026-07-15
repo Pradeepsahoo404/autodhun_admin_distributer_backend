@@ -20,23 +20,23 @@ import {
   CHANNEL_NOTIFICATION_CONFIG,
   channelNotificationsService,
 } from '@/modules/notification/channel-notifications.service';
+import {
+  buildCreatedByScope,
+  assertCreatedByAccess,
+  canManagePlatformWorkflow,
+  type ScopeActor,
+} from '@/utils/dataScope';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
+  roleSlug: string;
   name?: string;
 }
 
-function assertOwnership(item: IChannelLinking, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const createdBy = item.createdBy as unknown;
-  const ownerId =
-    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
-      ? String((createdBy as { _id: { toString(): string } })._id)
-      : String(createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only modify your own channel linking entries');
-  }
+async function assertOwnership(item: IChannelLinking, actor: Actor): Promise<void> {
+  await assertCreatedByAccess(actor as ScopeActor, item.createdBy);
 }
 
 function buildLinkingSummary(item: IChannelLinking): Record<string, string> {
@@ -68,18 +68,18 @@ function resolveAutoRejectAt(revenue: number): Date | null {
 }
 
 class ChannelLinkingService {
-  private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+  private async scope(actor: Actor) {
+    return buildCreatedByScope(actor as ScopeActor);
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IChannelLinking>> {
-    return channelLinkingRepository.paginate(query, this.scope(actor));
+    return channelLinkingRepository.paginate(query, await this.scope(actor));
   }
 
   async getById(id: string, actor: Actor): Promise<IChannelLinking> {
     const item = await channelLinkingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel linking entry not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
     return item;
   }
 
@@ -113,7 +113,9 @@ class ChannelLinkingService {
     const item = await channelLinkingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel linking entry not found');
 
-    if (actor.isSuperAdmin) {
+    if (canManagePlatformWorkflow(actor as ScopeActor)) {
+      await assertOwnership(item, actor);
+
       const revenue = dto.totalRevenue90Days ?? item.totalRevenue90Days;
       const autoRejectAt =
         dto.totalRevenue90Days !== undefined ? resolveAutoRejectAt(revenue) : item.autoRejectAt;
@@ -124,7 +126,7 @@ class ChannelLinkingService {
         updatedBy: actor.id as never,
       });
     } else {
-      assertOwnership(item, actor);
+      await assertOwnership(item, actor);
 
       // Any admin edit sends the entry back for review, even if it was
       // previously approved or rejected. Revenue re-evaluates auto-reject.
@@ -143,12 +145,13 @@ class ChannelLinkingService {
   }
 
   async updateStatus(id: string, dto: UpdateStatusDto, actor: Actor): Promise<IChannelLinking> {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can change channel linking status');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can change channel linking status');
     }
 
-    const item = await channelLinkingRepository.findById(id);
+    const item = await channelLinkingRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel linking entry not found');
+    await assertOwnership(item, actor);
 
     await channelLinkingRepository.updateById(id, {
       status: dto.status,
@@ -173,14 +176,14 @@ class ChannelLinkingService {
     if (!item) throw ApiError.notFound('Channel linking entry not found');
 
     // Admins may delete their own entries at any point (including approved).
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
 
     await channelLinkingRepository.deleteById(id);
   }
 
   async exportCsv(query: ExportQueryDto, actor: Actor): Promise<string> {
     const items = await channelLinkingRepository.findForExport({
-      ...this.scope(actor),
+      ...(await this.scope(actor)),
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
     });

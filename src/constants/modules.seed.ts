@@ -166,6 +166,10 @@ export const DEFAULT_MODULES: ModuleSeed[] = [
     group: 'management',
     audience: 'super-admin',
   }),
+  m('Sub Admins', 'sub-admins', '/dashboard/sub-admins', 'UserCog', 340, {
+    group: 'management',
+    audience: 'super-admin',
+  }),
 ];
 
 /** Slugs the Admin role can view out-of-the-box (root modules only). Child modules inherit. */

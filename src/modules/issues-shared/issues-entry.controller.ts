@@ -13,6 +13,8 @@ export function createIssuesEntryController(
       const result = await service.list(req.query as unknown as IssuesEntryListQueryDto, {
         id: req.user!.id,
         isSuperAdmin: req.user!.isSuperAdmin,
+        isSubAdmin: req.user!.isSubAdmin,
+        roleSlug: req.user!.role,
       });
       sendSuccess(res, result.items, `${labels.plural} fetched`, 200, {
         total: result.total,
@@ -26,6 +28,8 @@ export function createIssuesEntryController(
       const item = await service.getById(req.params.id, {
         id: req.user!.id,
         isSuperAdmin: req.user!.isSuperAdmin,
+        isSubAdmin: req.user!.isSubAdmin,
+        roleSlug: req.user!.role,
       });
       sendSuccess(res, item, `${labels.singular} fetched`);
     });
@@ -34,6 +38,8 @@ export function createIssuesEntryController(
       const item = await service.create(req.body, {
         id: req.user!.id,
         isSuperAdmin: req.user!.isSuperAdmin,
+        isSubAdmin: req.user!.isSubAdmin,
+        roleSlug: req.user!.role,
       });
       sendSuccess(res, item, `${labels.singular} created`, 201);
     });
@@ -42,6 +48,8 @@ export function createIssuesEntryController(
       const item = await service.update(req.params.id, req.body, {
         id: req.user!.id,
         isSuperAdmin: req.user!.isSuperAdmin,
+        isSubAdmin: req.user!.isSubAdmin,
+        roleSlug: req.user!.role,
       });
       sendSuccess(res, item, `${labels.singular} updated`);
     });
@@ -50,6 +58,8 @@ export function createIssuesEntryController(
       const item = await service.updateStatus(req.params.id, req.body, {
         id: req.user!.id,
         isSuperAdmin: req.user!.isSuperAdmin,
+        isSubAdmin: req.user!.isSubAdmin,
+        roleSlug: req.user!.role,
       });
       sendSuccess(res, item, 'Status updated');
     });
@@ -58,6 +68,8 @@ export function createIssuesEntryController(
       const item = await service.updateOwnership(req.params.id, req.body, {
         id: req.user!.id,
         isSuperAdmin: req.user!.isSuperAdmin,
+        isSubAdmin: req.user!.isSubAdmin,
+        roleSlug: req.user!.role,
       });
       sendSuccess(res, item, 'Ownership updated');
     });
@@ -66,6 +78,8 @@ export function createIssuesEntryController(
       await service.remove(req.params.id, {
         id: req.user!.id,
         isSuperAdmin: req.user!.isSuperAdmin,
+        isSubAdmin: req.user!.isSubAdmin,
+        roleSlug: req.user!.role,
       });
       sendSuccess(res, null, `${labels.singular} deleted`);
     });
@@ -74,6 +88,8 @@ export function createIssuesEntryController(
       const csv = await service.exportCsv(req.query as unknown as IssuesEntryExportQueryDto, {
         id: req.user!.id,
         isSuperAdmin: req.user!.isSuperAdmin,
+        isSubAdmin: req.user!.isSubAdmin,
+        roleSlug: req.user!.role,
       });
 
       const filename = `${labels.exportFilePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;

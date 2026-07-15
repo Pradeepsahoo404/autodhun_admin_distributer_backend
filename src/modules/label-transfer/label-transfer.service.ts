@@ -10,13 +10,22 @@ import { notificationRepository } from '@/modules/notification/notification.repo
 import { ApiError } from '@/utils/ApiError';
 import { buildLabelTransferEmail, sendMail } from '@/utils/email';
 import { ensureLabelOwnershipBackfill, findActiveAdminUsers } from '@/utils/labelOwnership';
+import {
+  assertOwnedByAccess,
+  canManagePlatformWorkflow,
+  getScopeUserIds,
+  type ScopeActor,
+} from '@/utils/dataScope';
 import { logger } from '@/config/logger';
 import { TransferLabelDto, LabelTransferListQueryDto } from './label-transfer.validator';
 import { PaginatedResult } from '@/types';
+import { Types } from 'mongoose';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
+  roleSlug: string;
   name?: string;
 }
 
@@ -35,8 +44,8 @@ export interface LabelTransferOverviewAdmin {
 
 class LabelTransferService {
   async getOverview(actor: Actor): Promise<{ admins: LabelTransferOverviewAdmin[] }> {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can view label transfer overview');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can view label transfer overview');
     }
 
     await ensureLabelOwnershipBackfill();
@@ -44,15 +53,23 @@ class LabelTransferService {
     const adminRole = await roleRepository.findBySlug(ROLES.ADMIN);
     if (!adminRole) return { admins: [] };
 
+    const adminFilter: Record<string, unknown> = {
+      role: adminRole._id,
+      status: USER_STATUS.ACTIVE,
+    };
+    if (actor.isSubAdmin) {
+      adminFilter.createdBy = new Types.ObjectId(actor.id);
+    }
+
+    const scopeIds = await getScopeUserIds(actor as ScopeActor);
+    const labelFilter: Record<string, unknown> = { status: LABEL_STATUS.ACTIVE };
+    if (scopeIds) {
+      labelFilter.ownedBy = { $in: scopeIds };
+    }
+
     const [admins, labels] = await Promise.all([
-      UserModel.find({ role: adminRole._id, status: USER_STATUS.ACTIVE })
-        .select('name email')
-        .sort({ name: 1 })
-        .lean(),
-      ReleaseLabelModel.find({ status: LABEL_STATUS.ACTIVE })
-        .select('name ownedBy createdAt')
-        .sort({ name: 1 })
-        .lean(),
+      UserModel.find(adminFilter).select('name email').sort({ name: 1 }).lean(),
+      ReleaseLabelModel.find(labelFilter).select('name ownedBy createdAt').sort({ name: 1 }).lean(),
     ]);
 
     const labelsByOwner = new Map<string, LabelTransferOverviewLabel[]>();
@@ -81,8 +98,8 @@ class LabelTransferService {
   }
 
   async transfer(dto: TransferLabelDto, actor: Actor) {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can transfer labels');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can transfer labels');
     }
 
     await ensureLabelOwnershipBackfill();
@@ -92,19 +109,29 @@ class LabelTransferService {
     if (label.status !== LABEL_STATUS.ACTIVE) {
       throw ApiError.badRequest('Only active labels can be transferred');
     }
+    await assertOwnedByAccess(actor as ScopeActor, label.ownedBy);
 
     const adminRole = await roleRepository.findBySlug(ROLES.ADMIN);
     if (!adminRole) throw ApiError.badRequest('Admin role is not configured');
 
-    const recipient = await UserModel.findOne({
+    const recipientFilter: Record<string, unknown> = {
       _id: dto.toUserId,
       role: adminRole._id,
       status: USER_STATUS.ACTIVE,
-    })
-      .select('name email')
-      .exec();
+    };
+    if (actor.isSubAdmin) {
+      recipientFilter.createdBy = new Types.ObjectId(actor.id);
+    }
 
-    if (!recipient) throw ApiError.badRequest('Recipient must be an active Admin user');
+    const recipient = await UserModel.findOne(recipientFilter).select('name email').exec();
+
+    if (!recipient) {
+      throw ApiError.badRequest(
+        actor.isSubAdmin
+          ? 'Recipient must be an active Admin you created'
+          : 'Recipient must be an active Admin user',
+      );
+    }
 
     const fromUserId = label.ownedBy.toString();
     if (fromUserId === dto.toUserId) {
@@ -136,7 +163,7 @@ class LabelTransferService {
         recipientName,
         labelName: label.name,
         fromAdminName: fromName,
-        transferredByName: transferredBy?.name?.trim() || actor.name || 'Super Admin',
+        transferredByName: transferredBy?.name?.trim() || actor.name || 'Admin',
         dashboardUrl,
       });
 
@@ -174,26 +201,40 @@ class LabelTransferService {
   }
 
   async listRecipientOptions(actor: Actor) {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can list transfer recipients');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can list transfer recipients');
     }
 
-    return findActiveAdminUsers();
+    return findActiveAdminUsers(actor);
   }
 
   async listHistory(
     query: LabelTransferListQueryDto,
     actor: Actor,
   ): Promise<PaginatedResult<ILabelTransfer>> {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can view label transfer history');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can view label transfer history');
     }
 
     const filter: Record<string, unknown> = {};
+    const scopeIds = await getScopeUserIds(actor as ScopeActor);
+
+    if (scopeIds) {
+      filter.$or = [
+        { fromUser: { $in: scopeIds } },
+        { toUser: { $in: scopeIds } },
+        { transferredBy: actor.id },
+      ];
+    }
 
     if (query.search?.trim()) {
       const regex = { $regex: query.search.trim(), $options: 'i' };
-      filter.$or = [{ labelName: regex }];
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or as unknown[] }, { labelName: regex }];
+        delete filter.$or;
+      } else {
+        filter.labelName = regex;
+      }
     }
 
     const [items, total] = await Promise.all([

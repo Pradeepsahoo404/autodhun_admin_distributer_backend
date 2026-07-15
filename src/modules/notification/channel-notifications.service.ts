@@ -1,13 +1,13 @@
-import { ROLES, USER_STATUS } from '@/constants';
-import { IUser, UserModel } from '@/modules/user/user.model';
-import { roleRepository } from '@/modules/role/role.repository';
+import { IUser } from '@/modules/user/user.model';
 import { NOTIFICATION_TYPE } from './notification.model';
 import { notificationRepository } from './notification.repository';
 import { logger } from '@/config/logger';
+import { findOversightRecipientIds } from './notification-recipients';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin?: boolean;
   name?: string;
 }
 
@@ -32,17 +32,6 @@ function formatStatusLabel(status: string): string {
 }
 
 class ChannelNotificationsService {
-  private async findSuperAdminIds(): Promise<string[]> {
-    const role = await roleRepository.findBySlug(ROLES.SUPER_ADMIN);
-    if (!role) return [];
-
-    const users = await UserModel.find({ role: role._id, status: USER_STATUS.ACTIVE })
-      .select('_id')
-      .exec();
-
-    return users.map((u) => u._id.toString());
-  }
-
   private buildRoute(config: ChannelModuleConfig, entryId: string): string {
     return `${config.route}?entry=${entryId}`;
   }
@@ -64,10 +53,10 @@ class ChannelNotificationsService {
           ? creator.name
           : actor.name ?? 'Admin';
 
-      const superAdminIds = await this.findSuperAdminIds();
-      if (superAdminIds.length === 0) return;
+      const recipientIds = await findOversightRecipientIds(actor.id, config.slug);
+      if (recipientIds.length === 0) return;
 
-      const payloads = superAdminIds.map((recipientId) => ({
+      const payloads = recipientIds.map((recipientId) => ({
         recipient: recipientId as never,
         type: NOTIFICATION_TYPE.CHANNEL_ENTRY_CREATED,
         moduleSlug: config.slug,
@@ -82,7 +71,7 @@ class ChannelNotificationsService {
 
       await notificationRepository.createMany(payloads);
     } catch (error) {
-      logger.error('Failed to notify super admins of channel entry', { slug: config.slug, error });
+      logger.error('Failed to notify reviewers of channel entry', { slug: config.slug, error });
     }
   }
 
@@ -94,7 +83,7 @@ class ChannelNotificationsService {
     actor: Actor,
     summary: Record<string, string> = {},
   ): Promise<void> {
-    if (!actor.isSuperAdmin) return;
+    if (!actor.isSuperAdmin && !actor.isSubAdmin) return;
 
     try {
       const ownerId = resolveOwnerId(entry.createdBy);

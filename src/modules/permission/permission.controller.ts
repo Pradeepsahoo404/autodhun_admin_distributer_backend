@@ -8,7 +8,7 @@ import { ApiError } from '@/utils/ApiError';
 class PermissionController {
   /** Resolved sidebar/permission matrix for the authenticated user. */
   mySidebar = asyncHandler(async (req: Request, res: Response) => {
-    const data = await permissionService.resolveForRole(req.user!.roleId, req.user!.role);
+    const data = await permissionService.resolveForUser(req.user!.roleId, req.user!.role, req.user!.id);
     sendSuccess(res, data, 'Sidebar resolved');
   });
 

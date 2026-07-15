@@ -19,6 +19,7 @@ import { hashPassword } from '@/utils/password';
 const seedRoles = async (): Promise<void> => {
   const roles = [
     { name: 'Super Admin', slug: ROLES.SUPER_ADMIN, description: 'Full unrestricted access', isSystem: true, status: ROLE_STATUS.ACTIVE },
+    { name: 'Sub Admin', slug: ROLES.SUB_ADMIN, description: 'Scoped admin with per-user module permissions', isSystem: true, status: ROLE_STATUS.ACTIVE },
     { name: 'Admin', slug: ROLES.ADMIN, description: 'Access limited to assigned modules', isSystem: true, status: ROLE_STATUS.ACTIVE },
   ];
   for (const role of roles) {

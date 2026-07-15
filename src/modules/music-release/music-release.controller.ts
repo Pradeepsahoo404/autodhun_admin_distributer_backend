@@ -21,6 +21,7 @@ function releaseActor(req: Request) {
     roleId: req.user!.roleId,
     roleSlug: req.user!.role,
     isSuperAdmin: req.user!.isSuperAdmin,
+    isSubAdmin: req.user!.isSubAdmin,
     name: req.user!.name,
   };
 }

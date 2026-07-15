@@ -1,12 +1,16 @@
+import { Types } from 'mongoose';
 import { ROLES } from '@/constants';
 import { ReleaseLabelModel } from '@/modules/release-catalog/release-label.model';
 import { roleRepository } from '@/modules/role/role.repository';
 import { UserModel } from '@/modules/user/user.model';
 import { ApiError } from '@/utils/ApiError';
+import { getScopeUserIds, type ScopeActor } from '@/utils/dataScope';
 
 export interface LabelAccessActor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin?: boolean;
+  roleSlug?: string;
 }
 
 function normalizeLabelName(name: string): string {
@@ -53,6 +57,12 @@ export async function assertLabelsAccessible(
     .lean();
 
   const labelByNormalized = new Map(labels.map((label) => [label.normalizedName, label]));
+  const scopeIds = await getScopeUserIds({
+    id: actor.id,
+    roleSlug: actor.roleSlug ?? '',
+    isSuperAdmin: actor.isSuperAdmin,
+    isSubAdmin: Boolean(actor.isSubAdmin),
+  } as ScopeActor);
 
   for (const name of names) {
     const label = labelByNormalized.get(normalizeLabelName(name));
@@ -60,7 +70,7 @@ export async function assertLabelsAccessible(
       throw ApiError.badRequest(`Label "${name}" is not available. Create it from your release form first.`);
     }
 
-    if (String(label.ownedBy) !== actor.id) {
+    if (!scopeIds?.includes(String(label.ownedBy))) {
       throw ApiError.forbidden(`You do not have access to label "${name}"`);
     }
 
@@ -70,16 +80,23 @@ export async function assertLabelsAccessible(
   }
 }
 
-export async function findActiveAdminUsers(): Promise<
+/** Active Admin accounts available as transfer recipients (scoped for Sub Admin). */
+export async function findActiveAdminUsers(actor?: LabelAccessActor): Promise<
   Array<{ _id: string; name: string; email: string }>
 > {
   const adminRole = await roleRepository.findBySlug(ROLES.ADMIN);
   if (!adminRole) return [];
 
-  const users = await UserModel.find({ role: adminRole._id, status: 'active' })
-    .select('name email')
-    .sort({ name: 1 })
-    .lean();
+  const filter: Record<string, unknown> = {
+    role: adminRole._id,
+    status: 'active',
+  };
+
+  if (actor && !actor.isSuperAdmin && actor.isSubAdmin) {
+    filter.createdBy = new Types.ObjectId(actor.id);
+  }
+
+  const users = await UserModel.find(filter).select('name email').sort({ name: 1 }).lean();
 
   return users.map((user) => ({
     _id: user._id.toString(),

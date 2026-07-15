@@ -1,5 +1,6 @@
 import { Model } from 'mongoose';
 import { ROLES } from '@/constants';
+import { buildAssignedToScope } from '@/utils/dataScope';
 import {
   ISSUES_MODULES,
   ISSUES_MODULE_SLUGS,
@@ -146,7 +147,15 @@ class IssuesAnalyticsService {
     if (visibleSlugs.length === 0) return null;
 
     const isSuperAdmin = actor.roleSlug === ROLES.SUPER_ADMIN;
-    const scope = isSuperAdmin ? {} : { assignedTo: actor.userId };
+    const isSubAdmin = actor.roleSlug === ROLES.SUB_ADMIN;
+    const scope = isSuperAdmin
+      ? {}
+      : await buildAssignedToScope({
+          id: actor.userId,
+          roleSlug: actor.roleSlug,
+          isSuperAdmin: false,
+          isSubAdmin,
+        });
     const slugSet = new Set(visibleSlugs);
 
     const modulesToQuery = ISSUES_ANALYTICS_MODULES.filter((mod) => slugSet.has(mod.slug));
@@ -183,7 +192,11 @@ class IssuesAnalyticsService {
 
     return {
       isSuperAdmin,
-      scopeLabel: isSuperAdmin ? 'All entries across admins' : 'Entries assigned to you',
+      scopeLabel: isSuperAdmin
+        ? 'All entries across admins'
+        : isSubAdmin
+          ? 'Entries in your scope'
+          : 'Entries assigned to you',
       summary,
       modules: moduleStats,
       dailyTrend7,

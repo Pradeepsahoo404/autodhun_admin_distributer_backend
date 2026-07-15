@@ -18,7 +18,13 @@ export const checkModule = (moduleSlug: string): RequestHandler =>
     if (!req.user) throw ApiError.unauthorized();
     if (req.user.isSuperAdmin) return next();
 
-    const allowed = await permissionService.can(req.user.roleId, req.user.role, moduleSlug, 'view');
+    const allowed = await permissionService.can(
+      req.user.roleId,
+      req.user.role,
+      moduleSlug,
+      'view',
+      req.user.id,
+    );
     if (!allowed) throw ApiError.forbidden(`No access to module: ${moduleSlug}`);
     next();
   });
@@ -29,7 +35,13 @@ export const checkPermission = (moduleSlug: string, action: PermissionAction): R
     if (!req.user) throw ApiError.unauthorized();
     if (req.user.isSuperAdmin) return next();
 
-    const allowed = await permissionService.can(req.user.roleId, req.user.role, moduleSlug, action);
+    const allowed = await permissionService.can(
+      req.user.roleId,
+      req.user.role,
+      moduleSlug,
+      action,
+      req.user.id,
+    );
     if (!allowed) {
       throw ApiError.forbidden(`You are not allowed to ${action} in module: ${moduleSlug}`);
     }

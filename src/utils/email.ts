@@ -280,6 +280,44 @@ export const buildInviteAdminEmail = ({
   return { subject, html, text };
 };
 
+export const buildInviteSubAdminEmail = ({
+  name,
+  email,
+  password,
+  loginUrl,
+  personalMessage,
+}: InviteAdminEmailOptions): { subject: string; html: string; text: string } => {
+  const subject = 'You have been invited as Sub Admin on Autodhun';
+  const customNote = personalMessage?.trim();
+  const credentialsNote = [
+    customNote ?? '',
+    customNote ? '' : null,
+    INVITE_PROFILE_BENEFITS_MESSAGE,
+    '',
+    `Login URL: ${loginUrl}`,
+    `Email: ${email}`,
+    `Password: ${password}`,
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+
+  const layoutOptions: WhiteEmailLayoutOptions = {
+    recipientName: name,
+    paragraphs: [
+      'You have been invited as a <strong>Sub Admin</strong> on Autodhun. Use the credentials below to sign in.',
+    ],
+    noteBlock: credentialsNote,
+    instruction: 'Please sign in and update your profile to access full benefits.',
+    ctaLabel: 'Sign in to Autodhun Admin',
+    ctaUrl: loginUrl,
+  };
+
+  const text = buildWhiteEmailText(layoutOptions);
+  const html = buildWhiteEmailLayout(layoutOptions);
+
+  return { subject, html, text };
+};
+
 const RELEASE_STATUS_EMAIL_CONTENT: Record<
   string,
   { introSuffix: string; instruction: string; ctaLabel: string }

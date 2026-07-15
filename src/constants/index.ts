@@ -1,6 +1,7 @@
 /** Canonical role slugs used throughout the RBAC layer. */
 export const ROLES = {
   SUPER_ADMIN: 'super-admin',
+  SUB_ADMIN: 'sub-admin',
   ADMIN: 'admin',
 } as const;
 

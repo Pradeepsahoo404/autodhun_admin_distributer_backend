@@ -32,6 +32,7 @@ export const authenticate: RequestHandler = asyncHandler(async (req, _res, next)
     roleId: role._id.toString(),
     role: role.slug,
     isSuperAdmin: role.slug === ROLES.SUPER_ADMIN,
+    isSubAdmin: role.slug === ROLES.SUB_ADMIN,
   };
   req.token = payload;
   next();

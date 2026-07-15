@@ -47,14 +47,12 @@ router.post(
 
 router.get(
   '/labels',
-  checkPermission(RELEASE_MODULE, 'view'),
   validate({ query: catalogListQuerySchema }),
   releaseCatalogController.listLabels,
 );
 
 router.get(
   '/labels/manage',
-  checkPermission(RELEASE_MODULE, 'view'),
   validate({ query: labelManageQuerySchema }),
   releaseCatalogController.listLabelsManage,
 );

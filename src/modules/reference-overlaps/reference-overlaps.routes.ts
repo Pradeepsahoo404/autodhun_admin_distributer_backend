@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { referenceOverlapsController } from './reference-overlaps.controller';
 import { authenticate } from '@/middlewares/auth.middleware';
-import { checkPermission, superAdminOnly } from '@/middlewares/rbac.middleware';
+import { checkPermission } from '@/middlewares/rbac.middleware';
 import { validate } from '@/middlewares/validate.middleware';
 import {
   createReferenceOverlapSchema,
@@ -38,19 +38,19 @@ router.get(
 );
 router.post(
   '/',
-  superAdminOnly,
+  checkPermission(MODULE, 'create'),
   validate({ body: createReferenceOverlapSchema }),
   referenceOverlapsController.create,
 );
 router.put(
   '/:id',
-  superAdminOnly,
+  checkPermission(MODULE, 'update'),
   validate({ params: idParamSchema, body: updateReferenceOverlapSchema }),
   referenceOverlapsController.update,
 );
 router.patch(
   '/:id/status',
-  superAdminOnly,
+  checkPermission(MODULE, 'update'),
   validate({ params: idParamSchema, body: updateStatusSchema }),
   referenceOverlapsController.updateStatus,
 );
@@ -62,7 +62,7 @@ router.patch(
 );
 router.delete(
   '/:id',
-  superAdminOnly,
+  checkPermission(MODULE, 'delete'),
   validate({ params: idParamSchema }),
   referenceOverlapsController.remove,
 );

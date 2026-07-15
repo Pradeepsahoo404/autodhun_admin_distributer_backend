@@ -1,19 +1,18 @@
-import { ROLES, USER_STATUS } from '@/constants';
 import {
   buildEntrySummary,
   RIGHTS_MANAGER_MODULES,
   RightsManagerModuleSlug,
 } from '@/constants/rightsManagerModules';
 import { IUser } from '@/modules/user/user.model';
-import { UserModel } from '@/modules/user/user.model';
-import { roleRepository } from '@/modules/role/role.repository';
 import { NOTIFICATION_TYPE } from './notification.model';
 import { notificationRepository } from './notification.repository';
 import { logger } from '@/config/logger';
+import { findOversightRecipientIds } from './notification-recipients';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin?: boolean;
   name?: string;
 }
 
@@ -33,20 +32,6 @@ function formatStatusLabel(status: string): string {
 }
 
 class RightsManagerNotificationsService {
-  private async findSuperAdminIds(): Promise<string[]> {
-    const role = await roleRepository.findBySlug(ROLES.SUPER_ADMIN);
-    if (!role) return [];
-
-    const users = await UserModel.find({
-      role: role._id,
-      status: USER_STATUS.ACTIVE,
-    })
-      .select('_id')
-      .exec();
-
-    return users.map((u) => u._id.toString());
-  }
-
   private buildRoute(moduleSlug: RightsManagerModuleSlug, entryId: string): string {
     const base = RIGHTS_MANAGER_MODULES[moduleSlug].route;
     return `${base}?entry=${entryId}`;
@@ -67,10 +52,10 @@ class RightsManagerNotificationsService {
       const creatorName =
         creator && typeof creator === 'object' && 'name' in creator ? creator.name : actor.name ?? 'Admin';
 
-      const superAdminIds = await this.findSuperAdminIds();
-      if (superAdminIds.length === 0) return;
+      const recipientIds = await findOversightRecipientIds(actor.id, moduleSlug);
+      if (recipientIds.length === 0) return;
 
-      const payloads = superAdminIds.map((recipientId) => ({
+      const payloads = recipientIds.map((recipientId) => ({
         recipient: recipientId as never,
         type: NOTIFICATION_TYPE.RIGHTS_ENTRY_CREATED,
         moduleSlug,
@@ -85,7 +70,7 @@ class RightsManagerNotificationsService {
 
       await notificationRepository.createMany(payloads);
     } catch (error) {
-      logger.error('Failed to notify super admins of rights manager entry', { moduleSlug, error });
+      logger.error('Failed to notify reviewers of rights manager entry', { moduleSlug, error });
     }
   }
 
@@ -95,7 +80,7 @@ class RightsManagerNotificationsService {
     newStatus: string,
     actor: Actor,
   ): Promise<void> {
-    if (!actor.isSuperAdmin) return;
+    if (!actor.isSuperAdmin && !actor.isSubAdmin) return;
 
     try {
       const ownerId = resolveOwnerId(entry.createdBy);

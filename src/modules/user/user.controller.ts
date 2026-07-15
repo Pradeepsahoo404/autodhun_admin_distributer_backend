@@ -6,8 +6,26 @@ import { PaginationQuery } from '@/types';
 
 class UserController {
   list = asyncHandler(async (req: Request, res: Response) => {
-    const result = await userService.list(req.query as unknown as PaginationQuery);
+    const result = await userService.list(req.query as unknown as PaginationQuery, req.user);
     sendSuccess(res, result.items, 'Users fetched', 200, {
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    });
+  });
+
+  issueAssignees = asyncHandler(async (req: Request, res: Response) => {
+    const result = await userService.list(
+      { page: 1, limit: 100, status: 'active' },
+      req.user,
+    );
+    sendSuccess(res, result.items, 'Issue assignees fetched');
+  });
+
+  listSubAdmins = asyncHandler(async (req: Request, res: Response) => {
+    const result = await userService.listSubAdmins(req.query as unknown as PaginationQuery);
+    sendSuccess(res, result.items, 'Sub Admins fetched', 200, {
       total: result.total,
       page: result.page,
       limit: result.limit,
@@ -26,12 +44,27 @@ class UserController {
   });
 
   inviteAdmin = asyncHandler(async (req: Request, res: Response) => {
-    const user = await userService.inviteAdmin(req.body, req.user!.id);
+    const user = await userService.inviteAdmin(req.body, req.user!);
     sendSuccess(res, user, 'Admin invited successfully. Login credentials have been emailed.', 201);
   });
 
+  inviteSubAdmin = asyncHandler(async (req: Request, res: Response) => {
+    const user = await userService.inviteSubAdmin(req.body, req.user!.id);
+    sendSuccess(res, user, 'Sub Admin invited successfully. Login credentials have been emailed.', 201);
+  });
+
+  getSubAdminPermissions = asyncHandler(async (req: Request, res: Response) => {
+    const matrix = await userService.getSubAdminPermissions(req.params.id);
+    sendSuccess(res, matrix, 'Sub Admin permissions fetched');
+  });
+
+  updateSubAdminPermissions = asyncHandler(async (req: Request, res: Response) => {
+    const user = await userService.updateSubAdminPermissions(req.params.id, req.body, req.user!.id);
+    sendSuccess(res, user, 'Sub Admin permissions updated');
+  });
+
   resendInvite = asyncHandler(async (req: Request, res: Response) => {
-    const user = await userService.resendInvite(req.params.id, req.body, req.user!.id);
+    const user = await userService.resendInvite(req.params.id, req.body, req.user!);
     sendSuccess(res, user, 'Invite resent with new credentials');
   });
 

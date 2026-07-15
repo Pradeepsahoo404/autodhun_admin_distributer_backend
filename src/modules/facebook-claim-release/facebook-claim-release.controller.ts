@@ -9,6 +9,8 @@ class FacebookClaimReleaseController {
     const result = await facebookClaimReleaseService.list(req.query as unknown as ListQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, result.items, 'Claim releases fetched', 200, {
       total: result.total,
@@ -22,6 +24,8 @@ class FacebookClaimReleaseController {
     const item = await facebookClaimReleaseService.getById(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Claim release fetched');
   });
@@ -30,6 +34,8 @@ class FacebookClaimReleaseController {
     const item = await facebookClaimReleaseService.create(req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Claim release created', 201);
   });
@@ -38,6 +44,8 @@ class FacebookClaimReleaseController {
     const item = await facebookClaimReleaseService.update(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Claim release updated');
   });
@@ -46,6 +54,8 @@ class FacebookClaimReleaseController {
     const item = await facebookClaimReleaseService.updateStatus(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Status updated');
   });
@@ -54,6 +64,8 @@ class FacebookClaimReleaseController {
     await facebookClaimReleaseService.remove(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, null, 'Claim release deleted');
   });
@@ -62,6 +74,8 @@ class FacebookClaimReleaseController {
     const csv = await facebookClaimReleaseService.exportCsv(req.query as unknown as ExportQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
 
     const filename = `facebook-claim-releases-${new Date().toISOString().slice(0, 10)}.csv`;

@@ -16,10 +16,18 @@ import {
   type SupportTicketIssueType,
 } from './support-ticket.constants';
 import { supportTicketNotificationsService } from '@/modules/notification/support-ticket-notifications.service';
+import {
+  buildCreatedByScope,
+  assertCreatedByAccess,
+  canManagePlatformWorkflow,
+  type ScopeActor,
+} from '@/utils/dataScope';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
+  roleSlug: string;
   name?: string;
 }
 
@@ -33,50 +41,48 @@ function buildTicketSummary(item: ISupportTicket): Record<string, string> {
   };
 }
 
-function assertOwnership(item: ISupportTicket, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const createdBy = item.createdBy as unknown;
-  const ownerId =
-    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
-      ? String((createdBy as { _id: { toString(): string } })._id)
-      : String(createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only access your own support tickets');
-  }
+async function assertOwnership(item: ISupportTicket, actor: Actor): Promise<void> {
+  await assertCreatedByAccess(actor as ScopeActor, item.createdBy);
 }
 
-function assertAdminCanModifyContent(item: ISupportTicket, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  assertOwnership(item, actor);
+async function assertAdminCanModifyContent(item: ISupportTicket, actor: Actor): Promise<void> {
+  if (canManagePlatformWorkflow(actor as ScopeActor)) {
+    await assertOwnership(item, actor);
+    return;
+  }
+  await assertOwnership(item, actor);
   if (item.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS) {
     throw ApiError.forbidden('You can only edit tickets that are still in process');
   }
 }
 
-function assertAdminCanDelete(item: ISupportTicket, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  assertOwnership(item, actor);
+async function assertAdminCanDelete(item: ISupportTicket, actor: Actor): Promise<void> {
+  if (canManagePlatformWorkflow(actor as ScopeActor)) {
+    await assertOwnership(item, actor);
+    return;
+  }
+  await assertOwnership(item, actor);
   if (item.status !== SUPPORT_TICKET_STATUS.IN_PROGRESS) {
     throw ApiError.forbidden('You can only delete tickets that are still in process');
   }
 }
 
 class SupportTicketService {
-  private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+  private async scope(actor: Actor) {
+    return buildCreatedByScope(actor as ScopeActor);
   }
 
   async list(
     query: ListSupportTicketsQueryDto,
     actor: Actor,
   ): Promise<PaginatedResult<ISupportTicket>> {
-    return supportTicketRepository.paginate(query, this.scope(actor));
+    return supportTicketRepository.paginate(query, await this.scope(actor));
   }
 
   async getById(id: string, actor: Actor): Promise<ISupportTicket> {
     const item = await supportTicketRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Support ticket not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
     return item;
   }
 
@@ -107,7 +113,7 @@ class SupportTicketService {
   async update(id: string, dto: UpdateSupportTicketDto, actor: Actor): Promise<ISupportTicket> {
     const item = await supportTicketRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Support ticket not found');
-    assertAdminCanModifyContent(item, actor);
+    await assertAdminCanModifyContent(item, actor);
 
     const nextCategory = (dto.category ?? item.category) as SupportTicketCategory;
     const nextIssueType = (dto.issueType ?? item.issueType) as SupportTicketIssueType;
@@ -135,12 +141,13 @@ class SupportTicketService {
     dto: UpdateSupportTicketStatusDto,
     actor: Actor,
   ): Promise<ISupportTicket> {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can update ticket status');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can update ticket status');
     }
 
     const item = await supportTicketRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Support ticket not found');
+    await assertOwnership(item, actor);
 
     const previousStatus = item.status;
     const updatePayload: Record<string, unknown> = {
@@ -185,7 +192,7 @@ class SupportTicketService {
       return;
     }
 
-    assertAdminCanDelete(item, actor);
+    await assertAdminCanDelete(item, actor);
     await supportTicketRepository.deleteById(id);
   }
 }

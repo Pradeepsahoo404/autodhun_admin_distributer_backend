@@ -11,6 +11,7 @@ export interface AuthUser {
   roleId: string;
   role: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
 }
 
 declare global {

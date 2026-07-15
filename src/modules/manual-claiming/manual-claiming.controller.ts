@@ -9,6 +9,8 @@ class ManualClaimingController {
     const result = await manualClaimingService.list(req.query as unknown as ListQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, result.items, 'Manual claiming entries fetched', 200, {
       total: result.total,
@@ -22,6 +24,8 @@ class ManualClaimingController {
     const item = await manualClaimingService.getById(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Manual claiming entry fetched');
   });
@@ -30,6 +34,8 @@ class ManualClaimingController {
     const item = await manualClaimingService.create(req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Manual claiming entry created', 201);
   });
@@ -38,6 +44,8 @@ class ManualClaimingController {
     const item = await manualClaimingService.update(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Manual claiming entry updated');
   });
@@ -46,6 +54,8 @@ class ManualClaimingController {
     const item = await manualClaimingService.updateStatus(req.params.id, req.body, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, item, 'Status updated');
   });
@@ -54,6 +64,8 @@ class ManualClaimingController {
     await manualClaimingService.remove(req.params.id, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
     sendSuccess(res, null, 'Manual claiming entry deleted');
   });
@@ -62,6 +74,8 @@ class ManualClaimingController {
     const csv = await manualClaimingService.exportCsv(req.query as unknown as ExportQueryDto, {
       id: req.user!.id,
       isSuperAdmin: req.user!.isSuperAdmin,
+      isSubAdmin: req.user!.isSubAdmin,
+      roleSlug: req.user!.role,
     });
 
     const filename = `manual-claiming-${new Date().toISOString().slice(0, 10)}.csv`;

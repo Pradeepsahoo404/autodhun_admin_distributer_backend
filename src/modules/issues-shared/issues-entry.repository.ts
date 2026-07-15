@@ -5,7 +5,6 @@ import { PaginatedResult } from '@/types';
 import { IssuesEntryListQueryDto } from './issues-entry.validator';
 
 export interface IssuesEntryListFilter {
-  assignedTo?: string;
   search?: string;
   status?: string;
   ownership?: string;
@@ -13,21 +12,28 @@ export interface IssuesEntryListFilter {
   dateTo?: string;
 }
 
-function buildFilter(params: IssuesEntryListFilter): Record<string, unknown> {
-  const filter: Record<string, unknown> = {};
-
-  if (params.assignedTo) {
-    filter.assignedTo = params.assignedTo;
-  }
+function buildFilter(
+  params: IssuesEntryListFilter,
+  scope: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const filter: Record<string, unknown> = { ...scope };
 
   if (params.search) {
-    filter.$or = [
+    const searchOr = [
       { otherParty: { $regex: params.search, $options: 'i' } },
       { assetName: { $regex: params.search, $options: 'i' } },
       { overlappingAssetName: { $regex: params.search, $options: 'i' } },
       { labelName: { $regex: params.search, $options: 'i' } },
       { isrcCode: { $regex: params.search, $options: 'i' } },
     ];
+
+    if (filter.$or) {
+      const scopeOr = filter.$or;
+      delete filter.$or;
+      filter.$and = [{ $or: scopeOr }, { $or: searchOr }];
+    } else {
+      filter.$or = searchOr;
+    }
   }
 
   if (params.status) {
@@ -68,17 +74,19 @@ export class IssuesEntryRepository extends BaseRepository<IIssuesEntry> {
 
   async paginate(
     query: IssuesEntryListQueryDto,
-    scope: IssuesEntryListFilter,
+    scope: Record<string, unknown>,
   ): Promise<PaginatedResult<IIssuesEntry>> {
     const { page, limit, sortBy = 'createdAt', sortOrder = 'desc' } = query;
-    const filter = buildFilter({
-      ...scope,
-      search: query.search,
-      status: query.status,
-      ownership: query.ownership,
-      dateFrom: query.dateFrom,
-      dateTo: query.dateTo,
-    });
+    const filter = buildFilter(
+      {
+        search: query.search,
+        status: query.status,
+        ownership: query.ownership,
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+      },
+      scope,
+    );
 
     const [items, total] = await Promise.all([
       this.issuesModel
@@ -95,8 +103,11 @@ export class IssuesEntryRepository extends BaseRepository<IIssuesEntry> {
     return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  findForExport(scope: IssuesEntryListFilter): Promise<IIssuesEntry[]> {
-    const filter = buildFilter(scope);
+  findForExport(
+    scope: Record<string, unknown>,
+    params: IssuesEntryListFilter = {},
+  ): Promise<IIssuesEntry[]> {
+    const filter = buildFilter(params, scope);
     return this.issuesModel
       .find(filter)
       .populate('assignedTo', 'name email')

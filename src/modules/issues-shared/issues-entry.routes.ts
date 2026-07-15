@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '@/middlewares/auth.middleware';
-import { checkPermission, superAdminOnly } from '@/middlewares/rbac.middleware';
+import { checkPermission } from '@/middlewares/rbac.middleware';
 import { validate } from '@/middlewares/validate.middleware';
 import { idParamSchema } from '@/validators/common.validator';
 import {
@@ -43,19 +43,19 @@ export function createIssuesEntryRoutes(
   );
   router.post(
     '/',
-    superAdminOnly,
+    checkPermission(permissionModule, 'create'),
     validate({ body: createIssuesEntrySchema }),
     controller.create,
   );
   router.put(
     '/:id',
-    superAdminOnly,
+    checkPermission(permissionModule, 'update'),
     validate({ params: idParamSchema, body: updateIssuesEntrySchema }),
     controller.update,
   );
   router.patch(
     '/:id/status',
-    superAdminOnly,
+    checkPermission(permissionModule, 'update'),
     validate({ params: idParamSchema, body: updateIssuesEntryStatusSchema }),
     controller.updateStatus,
   );
@@ -67,7 +67,7 @@ export function createIssuesEntryRoutes(
   );
   router.delete(
     '/:id',
-    superAdminOnly,
+    checkPermission(permissionModule, 'delete'),
     validate({ params: idParamSchema }),
     controller.remove,
   );

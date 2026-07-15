@@ -20,10 +20,19 @@ import {
   issuesNotificationsService,
   resolveUserId,
 } from '@/modules/notification/issues-notifications.service';
+import {
+  buildAssignedToScope,
+  canManagePlatformWorkflow,
+  getScopeUserIds,
+  resolveOwnerId,
+  type ScopeActor,
+} from '@/utils/dataScope';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
+  roleSlug: string;
   name?: string;
 }
 
@@ -44,8 +53,8 @@ function formatOwnership(value: string): string {
   return 'Pending';
 }
 
-function assertSuperAdmin(actor: Actor, message: string): void {
-  if (!actor.isSuperAdmin) {
+function assertPlatformWorkflow(actor: Actor, message: string): void {
+  if (!canManagePlatformWorkflow(actor as ScopeActor)) {
     throw ApiError.forbidden(message);
   }
 }
@@ -57,7 +66,7 @@ function assertAssignedAdmin(item: IReferenceOverlap, actor: Actor): void {
   }
 }
 
-async function assertAdminUser(userId: string): Promise<void> {
+async function assertAdminUser(userId: string, actor?: Actor): Promise<void> {
   const user = await userRepository.findByIdWithRole(userId);
   if (!user) throw ApiError.badRequest('Assigned admin not found');
 
@@ -66,31 +75,54 @@ async function assertAdminUser(userId: string): Promise<void> {
   if (slug !== ROLES.ADMIN) {
     throw ApiError.badRequest('Assigned user must be an Admin');
   }
+
+  if (actor?.isSubAdmin) {
+    const createdBy = resolveOwnerId(user.createdBy);
+    if (createdBy !== actor.id) {
+      throw ApiError.forbidden('You can only assign admins you created');
+    }
+  }
+}
+
+async function assertSubAdminScopeAccess(item: IReferenceOverlap, actor: Actor): Promise<void> {
+  const createdById = resolveOwnerId(item.createdBy);
+  if (createdById === actor.id) return;
+
+  const assignedId = resolveUserId(item.assignedTo);
+  const scopeIds = await getScopeUserIds(actor as ScopeActor);
+  const childAdminIds = (scopeIds ?? []).filter((id) => id !== actor.id);
+  if (assignedId && childAdminIds.includes(assignedId)) return;
+
+  throw ApiError.forbidden('You do not have access to this record');
 }
 
 class ReferenceOverlapsService {
-  private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { assignedTo: actor.id };
+  private async scope(actor: Actor) {
+    return buildAssignedToScope(actor as ScopeActor);
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IReferenceOverlap>> {
-    return referenceOverlapsRepository.paginate(query, this.scope(actor));
+    return referenceOverlapsRepository.paginate(query, await this.scope(actor));
   }
 
   async getById(id: string, actor: Actor): Promise<IReferenceOverlap> {
     const item = await referenceOverlapsRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Reference overlap not found');
 
-    if (!actor.isSuperAdmin) {
-      assertAssignedAdmin(item, actor);
+    if (actor.isSuperAdmin) return item;
+
+    if (actor.isSubAdmin) {
+      await assertSubAdminScopeAccess(item, actor);
+      return item;
     }
 
+    assertAssignedAdmin(item, actor);
     return item;
   }
 
   async create(dto: CreateReferenceOverlapDto, actor: Actor): Promise<IReferenceOverlap> {
-    assertSuperAdmin(actor, 'Only Super Admin can create reference overlaps');
-    await assertAdminUser(dto.assignedTo);
+    assertPlatformWorkflow(actor, 'Only Super Admin or Sub Admin can create reference overlaps');
+    await assertAdminUser(dto.assignedTo, actor);
 
     const created = await referenceOverlapsRepository.create({
       ...dto,
@@ -114,13 +146,17 @@ class ReferenceOverlapsService {
   }
 
   async update(id: string, dto: UpdateReferenceOverlapDto, actor: Actor): Promise<IReferenceOverlap> {
-    assertSuperAdmin(actor, 'Only Super Admin can edit reference overlaps');
+    assertPlatformWorkflow(actor, 'Only Super Admin or Sub Admin can edit reference overlaps');
 
     const item = await referenceOverlapsRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Reference overlap not found');
 
+    if (actor.isSubAdmin) {
+      await assertSubAdminScopeAccess(item, actor);
+    }
+
     if (dto.assignedTo) {
-      await assertAdminUser(dto.assignedTo);
+      await assertAdminUser(dto.assignedTo, actor);
     }
 
     await referenceOverlapsRepository.updateById(id, {
@@ -133,10 +169,14 @@ class ReferenceOverlapsService {
   }
 
   async updateStatus(id: string, dto: UpdateStatusDto, actor: Actor): Promise<IReferenceOverlap> {
-    assertSuperAdmin(actor, 'Only Super Admin can change reference overlap status');
+    assertPlatformWorkflow(actor, 'Only Super Admin or Sub Admin can change reference overlap status');
 
     const item = await referenceOverlapsRepository.findById(id);
     if (!item) throw ApiError.notFound('Reference overlap not found');
+
+    if (actor.isSubAdmin) {
+      await assertSubAdminScopeAccess(item, actor);
+    }
 
     await referenceOverlapsRepository.updateById(id, {
       status: dto.status,
@@ -152,7 +192,7 @@ class ReferenceOverlapsService {
     dto: UpdateOwnershipDto,
     actor: Actor,
   ): Promise<IReferenceOverlap> {
-    if (actor.isSuperAdmin) {
+    if (canManagePlatformWorkflow(actor as ScopeActor)) {
       throw ApiError.forbidden('Only assigned Admin can update ownership');
     }
 
@@ -178,16 +218,20 @@ class ReferenceOverlapsService {
   }
 
   async remove(id: string, actor: Actor): Promise<void> {
-    assertSuperAdmin(actor, 'Only Super Admin can delete reference overlaps');
+    assertPlatformWorkflow(actor, 'Only Super Admin or Sub Admin can delete reference overlaps');
 
     const item = await referenceOverlapsRepository.findById(id);
     if (!item) throw ApiError.notFound('Reference overlap not found');
+
+    if (actor.isSubAdmin) {
+      await assertSubAdminScopeAccess(item, actor);
+    }
+
     await referenceOverlapsRepository.deleteById(id);
   }
 
   async exportCsv(query: ExportQueryDto, actor: Actor): Promise<string> {
-    const items = await referenceOverlapsRepository.findForExport({
-      ...this.scope(actor),
+    const items = await referenceOverlapsRepository.findForExport(await this.scope(actor), {
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
     });

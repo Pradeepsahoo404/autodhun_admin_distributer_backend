@@ -25,8 +25,8 @@ class UserRepository extends BaseRepository<IUser> {
     return UserModel.findById(id).select('+password').exec();
   }
 
-  async paginate(query: PaginationQuery): Promise<PaginatedResult<IUser>> {
-    const { page, limit, search, status, roleId, sortBy = 'createdAt', sortOrder = 'desc' } = query;
+  async paginate(query: PaginationQuery & { createdBy?: string }): Promise<PaginatedResult<IUser>> {
+    const { page, limit, search, status, roleId, createdBy, sortBy = 'createdAt', sortOrder = 'desc' } = query;
     const filter: Record<string, unknown> = {};
 
     if (search) {
@@ -41,11 +41,17 @@ class UserRepository extends BaseRepository<IUser> {
     if (roleId) {
       filter.role = roleId;
     }
+    if (createdBy) {
+      filter.createdBy = createdBy;
+    }
 
     const [items, total] = await Promise.all([
       UserModel.find(filter)
-        .select('firstName lastName name email role status emailVerified termsAccepted lastLogin createdAt updatedAt')
+        .select(
+          'firstName lastName name email role status emailVerified termsAccepted lastLogin createdBy createdAt updatedAt',
+        )
         .populate('role', 'name slug')
+        .populate('createdBy', 'name email')
         .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 })
         .skip((page - 1) * limit)
         .limit(limit)

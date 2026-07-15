@@ -6,6 +6,12 @@ import { LABEL_STATUS, type LabelStatus } from './release-catalog.constants';
 import { ApiError } from '@/utils/ApiError';
 import { ensureLabelOwnershipBackfill, type LabelAccessActor } from '@/utils/labelOwnership';
 import {
+  assertOwnedByAccess,
+  buildOwnedByScope,
+  canManagePlatformWorkflow,
+  type ScopeActor,
+} from '@/utils/dataScope';
+import {
   CatalogListQueryDto,
   CreateCatalogNameDto,
   LabelManageQueryDto,
@@ -19,11 +25,40 @@ function normalizeName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-interface CatalogActor extends LabelAccessActor {}
+interface CatalogActor extends LabelAccessActor {
+  roleSlug: string;
+}
 
-interface ManageActor extends LabelAccessActor {}
+interface ManageActor extends LabelAccessActor {
+  roleSlug: string;
+}
+
+function toScopeActor(actor: ManageActor): ScopeActor {
+  return {
+    id: actor.id,
+    roleSlug: actor.roleSlug,
+    isSuperAdmin: actor.isSuperAdmin,
+    isSubAdmin: Boolean(actor.isSubAdmin),
+  };
+}
 
 let statusBackfillPromise: Promise<void> | null = null;
+let artistIndexPromise: Promise<void> | null = null;
+
+/** Drops legacy global unique name index so artist catalogs are per-owner. */
+async function ensureArtistOwnerIndexes(): Promise<void> {
+  if (!artistIndexPromise) {
+    artistIndexPromise = (async () => {
+      try {
+        await ReleaseArtistModel.collection.dropIndex('normalizedName_1');
+      } catch {
+        // Index already removed or never existed.
+      }
+      await ReleaseArtistModel.syncIndexes();
+    })();
+  }
+  await artistIndexPromise;
+}
 
 async function ensureLabelStatusBackfill(): Promise<void> {
   if (!statusBackfillPromise) {
@@ -35,8 +70,11 @@ async function ensureLabelStatusBackfill(): Promise<void> {
   await statusBackfillPromise;
 }
 
-async function listArtists(query: CatalogListQueryDto): Promise<IReleaseArtist[]> {
-  const filter: Record<string, unknown> = {};
+async function listArtists(query: CatalogListQueryDto, actor: CatalogActor): Promise<IReleaseArtist[]> {
+  await ensureArtistOwnerIndexes();
+
+  /** Form dropdowns are owner-only — each account only sees artists they created. */
+  const filter: Record<string, unknown> = { createdBy: actor.id };
   if (query.search?.trim()) {
     filter.name = { $regex: query.search.trim(), $options: 'i' };
   }
@@ -63,9 +101,15 @@ async function listLabels(query: CatalogListQueryDto, actor: CatalogActor): Prom
   await ensureLabelOwnershipBackfill();
   await ensureLabelStatusBackfill();
 
+  /**
+   * Super Admin → all active labels (for Issues assign forms).
+   * Sub Admin → labels owned by self + invited Admins.
+   * Admin → only own labels (create-release / claims forms).
+   */
+  const ownedByScope = await buildOwnedByScope(toScopeActor(actor));
   const filter: Record<string, unknown> = {
-    ownedBy: actor.id,
     status: LABEL_STATUS.ACTIVE,
+    ...ownedByScope,
   };
 
   if (query.search?.trim()) {
@@ -77,12 +121,13 @@ async function listLabels(query: CatalogListQueryDto, actor: CatalogActor): Prom
 
 async function listLabelsManage(
   query: LabelManageQueryDto,
-  _actor: ManageActor,
+  actor: ManageActor,
 ): Promise<PaginatedResult<IReleaseLabel>> {
   await ensureLabelOwnershipBackfill();
   await ensureLabelStatusBackfill();
 
-  const filter: Record<string, unknown> = { status: query.status };
+  const ownedByScope = await buildOwnedByScope(toScopeActor(actor));
+  const filter: Record<string, unknown> = { status: query.status, ...ownedByScope };
 
   if (query.search?.trim()) {
     filter.name = { $regex: query.search.trim(), $options: 'i' };
@@ -108,16 +153,18 @@ async function listLabelsManage(
 }
 
 async function createArtist(dto: CreateCatalogNameDto, userId: string): Promise<IReleaseArtist> {
+  await ensureArtistOwnerIndexes();
+
   const name = dto.name.trim();
   const normalizedName = normalizeName(name);
-  const existing = await ReleaseArtistModel.findOne({ normalizedName }).exec();
-  if (existing) throw ApiError.conflict('An artist with this name already exists');
+  const existing = await ReleaseArtistModel.findOne({ createdBy: userId, normalizedName }).exec();
+  if (existing) throw ApiError.conflict('An artist with this name already exists in your catalog');
 
   try {
     return await ReleaseArtistModel.create({ name, normalizedName, createdBy: userId });
   } catch {
-    const duplicate = await ReleaseArtistModel.findOne({ normalizedName }).exec();
-    if (duplicate) throw ApiError.conflict('An artist with this name already exists');
+    const duplicate = await ReleaseArtistModel.findOne({ createdBy: userId, normalizedName }).exec();
+    if (duplicate) throw ApiError.conflict('An artist with this name already exists in your catalog');
     throw ApiError.badRequest('Could not create artist');
   }
 }
@@ -148,6 +195,7 @@ async function updateLabel(id: string, dto: UpdateLabelDto, actor: ManageActor):
 
   const label = await ReleaseLabelModel.findById(id).exec();
   if (!label) throw ApiError.notFound('Label not found');
+  await assertOwnedByAccess(toScopeActor(actor), label.ownedBy);
 
   const previousName = label.name;
   const name = dto.name.trim();
@@ -163,7 +211,7 @@ async function updateLabel(id: string, dto: UpdateLabelDto, actor: ManageActor):
   label.normalizedName = normalizedName;
   await label.save();
 
-  if (actor.isSuperAdmin && previousName !== name) {
+  if (canManagePlatformWorkflow(toScopeActor(actor)) && previousName !== name) {
     await labelUpdateService.recordUpdate({
       labelId: label._id.toString(),
       previousName,
@@ -177,9 +225,10 @@ async function updateLabel(id: string, dto: UpdateLabelDto, actor: ManageActor):
   return populated as IReleaseLabel;
 }
 
-async function deleteLabel(id: string, _actor: ManageActor): Promise<void> {
+async function deleteLabel(id: string, actor: ManageActor): Promise<void> {
   const label = await ReleaseLabelModel.findById(id).exec();
   if (!label) throw ApiError.notFound('Label not found');
+  await assertOwnedByAccess(toScopeActor(actor), label.ownedBy);
 
   await ReleaseLabelModel.deleteOne({ _id: label._id });
 }
@@ -187,12 +236,13 @@ async function deleteLabel(id: string, _actor: ManageActor): Promise<void> {
 async function updateLabelStatus(
   id: string,
   dto: UpdateLabelStatusDto,
-  _actor: ManageActor,
+  actor: ManageActor,
 ): Promise<IReleaseLabel> {
   await ensureLabelStatusBackfill();
 
   const label = await ReleaseLabelModel.findById(id).exec();
   if (!label) throw ApiError.notFound('Label not found');
+  await assertOwnedByAccess(toScopeActor(actor), label.ownedBy);
 
   label.status = dto.status as LabelStatus;
   await label.save();

@@ -14,7 +14,12 @@ import {
 } from './release-catalog.validator';
 
 function catalogActor(req: Request) {
-  return { id: req.user!.id, isSuperAdmin: req.user!.isSuperAdmin };
+  return {
+    id: req.user!.id,
+    isSuperAdmin: req.user!.isSuperAdmin,
+    isSubAdmin: req.user!.isSubAdmin,
+    roleSlug: req.user!.role,
+  };
 }
 
 async function assertManageAccess(req: Request, status: string): Promise<void> {
@@ -26,6 +31,7 @@ async function assertManageAccess(req: Request, status: string): Promise<void> {
     req.user!.role,
     moduleSlug,
     'view',
+    req.user!.id,
   );
 
   if (!allowed) throw ApiError.forbidden(`No access to module: ${moduleSlug}`);
@@ -41,6 +47,7 @@ async function assertLabelMutationAccess(req: Request, action: 'update' | 'delet
       req.user!.role,
       moduleSlug,
       action,
+      req.user!.id,
     );
     if (allowed) return;
   }
@@ -48,9 +55,31 @@ async function assertLabelMutationAccess(req: Request, action: 'update' | 'delet
   throw ApiError.forbidden('No permission to manage labels');
 }
 
+async function assertLabelCatalogAccess(req: Request): Promise<void> {
+  if (req.user!.isSuperAdmin) return;
+
+  /** Release forms, Issues assign forms, and label management all need the catalog. */
+  const modules = ['release', 'issues', 'label-transfer', 'label-block'] as const;
+  for (const moduleSlug of modules) {
+    const allowed = await permissionService.can(
+      req.user!.roleId,
+      req.user!.role,
+      moduleSlug,
+      'view',
+      req.user!.id,
+    );
+    if (allowed) return;
+  }
+
+  throw ApiError.forbidden('No access to labels catalog');
+}
+
 class ReleaseCatalogController {
   listArtists = asyncHandler(async (req: Request, res: Response) => {
-    const items = await releaseCatalogService.listArtists(req.query as unknown as CatalogListQueryDto);
+    const items = await releaseCatalogService.listArtists(
+      req.query as unknown as CatalogListQueryDto,
+      catalogActor(req),
+    );
     sendSuccess(res, items, 'Artists fetched');
   });
 
@@ -70,6 +99,7 @@ class ReleaseCatalogController {
   });
 
   listLabels = asyncHandler(async (req: Request, res: Response) => {
+    await assertLabelCatalogAccess(req);
     const items = await releaseCatalogService.listLabels(
       req.query as unknown as CatalogListQueryDto,
       catalogActor(req),

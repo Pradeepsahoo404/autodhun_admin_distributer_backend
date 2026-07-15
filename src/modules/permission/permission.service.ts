@@ -1,6 +1,7 @@
 import { permissionRepository } from './permission.repository';
 import { roleRepository } from '@/modules/role/role.repository';
 import { moduleRepository } from '@/modules/module/module.repository';
+import { IModule } from '@/modules/module/module.model';
 import { IPermission, PermissionModel } from './permission.model';
 import { ApiError } from '@/utils/ApiError';
 import { ROLES, PermissionAction, PERMISSION_ACTIONS } from '@/constants';
@@ -13,7 +14,8 @@ import {
   isModuleVisibleForRole,
   isRootModule,
 } from '@/utils/moduleHierarchy';
-import { IModule } from '@/modules/module/module.model';
+import { userPermissionRepository } from '@/modules/user-permission/user-permission.repository';
+import { IUserPermission } from '@/modules/user-permission/user-permission.model';
 
 const actionToField: Record<PermissionAction, keyof Pick<IPermission, 'canView' | 'canCreate' | 'canUpdate' | 'canDelete'>> = {
   view: PERMISSION_ACTIONS.VIEW,
@@ -39,6 +41,14 @@ const toResolved = (mod: IModule, perms: Pick<IPermission, 'canView' | 'canCreat
 });
 
 class PermissionService {
+  /** Resolves sidebar for the authenticated principal (role or per-user for Sub Admin). */
+  async resolveForUser(roleId: string, roleSlug: string, userId: string): Promise<ResolvedModulePermission[]> {
+    if (roleSlug === ROLES.SUB_ADMIN) {
+      return this.resolveForSubAdmin(userId);
+    }
+    return this.resolveForRole(roleId, roleSlug);
+  }
+
   /**
    * Resolves the sidebar for a role. Permissions are stored on root modules only;
    * child modules inherit the root module's actions automatically.
@@ -69,9 +79,45 @@ class PermissionService {
       .sort((a, b) => a.order - b.order);
   }
 
+  /** Sub Admin sidebar from per-user UserPermission rows. */
+  private async resolveForSubAdmin(userId: string): Promise<ResolvedModulePermission[]> {
+    const modules = await moduleRepository.findActiveSorted();
+    const bySlug = buildModuleSlugMap(modules);
+    const rootPermBySlug = await this.loadUserRootPermissionMap(userId);
+
+    return modules
+      .filter((mod) => isModuleVisibleForRole(mod, bySlug, ROLES.SUB_ADMIN))
+      .filter((mod) => {
+        const rootSlug = getRootSlug(mod, bySlug);
+        if (rootSlug === 'notifications') return true;
+        return Boolean(rootPermBySlug.get(rootSlug)?.canView);
+      })
+      .map((mod) => {
+        const rootSlug = getRootSlug(mod, bySlug);
+        const rootPerm = rootPermBySlug.get(rootSlug) ?? {
+          canView: rootSlug === 'notifications',
+          canCreate: false,
+          canUpdate: false,
+          canDelete: false,
+        };
+        return toResolved(mod, rootPerm);
+      })
+      .sort((a, b) => a.order - b.order);
+  }
+
   /** Authorization check — always evaluates against the root module's permission row. */
-  async can(roleId: string, roleSlug: string, moduleSlug: string, action: PermissionAction): Promise<boolean> {
+  async can(
+    roleId: string,
+    roleSlug: string,
+    moduleSlug: string,
+    action: PermissionAction,
+    userId?: string,
+  ): Promise<boolean> {
     if (roleSlug === ROLES.SUPER_ADMIN) return true;
+
+    if (roleSlug === ROLES.SUB_ADMIN && userId) {
+      return this.canForSubAdmin(userId, moduleSlug, action);
+    }
 
     const modules = await moduleRepository.findActiveSorted();
     const moduleDoc = modules.find((m) => m.slug === moduleSlug);
@@ -86,6 +132,27 @@ class PermissionService {
     if (!permission) return false;
 
     return Boolean(permission[actionToField[action]]);
+  }
+
+  private async canForSubAdmin(userId: string, moduleSlug: string, action: PermissionAction): Promise<boolean> {
+    const modules = await moduleRepository.findActiveSorted();
+    const moduleDoc = modules.find((m) => m.slug === moduleSlug);
+    if (!moduleDoc) return false;
+
+    const bySlug = buildModuleSlugMap(modules);
+    if (!isModuleVisibleForRole(moduleDoc, bySlug, ROLES.SUB_ADMIN)) return false;
+
+    const rootSlug = getRootSlug(moduleDoc, bySlug);
+    if (rootSlug === 'notifications') return action === 'view';
+
+    const rootModule = modules.find((m) => m.slug === rootSlug);
+    if (!rootModule) return false;
+
+    const map = await this.loadUserRootPermissionMap(userId);
+    const perm = map.get(rootSlug);
+    if (!perm) return false;
+
+    return Boolean(perm[actionToField[action]]);
   }
 
   /**
@@ -165,8 +232,8 @@ class PermissionService {
     if (!isRootModule(moduleDoc)) {
       throw ApiError.badRequest('Permissions can only be set on main modules');
     }
-    if (role.slug === ROLES.SUPER_ADMIN) {
-      throw ApiError.badRequest('Super Admin permissions are implicit and cannot be edited');
+    if (role.slug === ROLES.SUPER_ADMIN || role.slug === ROLES.SUB_ADMIN) {
+      throw ApiError.badRequest('Super Admin and Sub Admin permissions are implicit or per-user and cannot be edited here');
     }
 
     const result = await permissionRepository.upsert(input.roleId, input.moduleId, {
@@ -197,8 +264,8 @@ class PermissionService {
   ): Promise<IPermission[]> {
     const role = await roleRepository.findById(roleId);
     if (!role) throw ApiError.notFound('Role not found');
-    if (role.slug === ROLES.SUPER_ADMIN) {
-      throw ApiError.badRequest('Super Admin permissions are implicit and cannot be edited');
+    if (role.slug === ROLES.SUPER_ADMIN || role.slug === ROLES.SUB_ADMIN) {
+      throw ApiError.badRequest('Super Admin and Sub Admin permissions are implicit or per-user and cannot be edited here');
     }
 
     const modules = await moduleRepository.findAllSorted();
@@ -234,6 +301,82 @@ class PermissionService {
   async remove(id: string): Promise<void> {
     const deleted = await permissionRepository.deleteById(id);
     if (!deleted) throw ApiError.notFound('Permission not found');
+  }
+
+  /** Permission matrix for a Sub Admin user (root modules only). */
+  async getUserMatrix(userId: string): Promise<EffectivePermissionRow[]> {
+    const modules = await moduleRepository.findActiveSorted();
+    const bySlug = buildModuleSlugMap(modules);
+    const rootModules = getRootModules(modules).filter(
+      (mod) => mod.isActive && isModuleVisibleForRole(mod, bySlug, ROLES.SUB_ADMIN),
+    );
+    const rootPermBySlug = await this.loadUserRootPermissionMap(userId);
+
+    return rootModules.map((mod) => {
+      const perms = rootPermBySlug.get(mod.slug) ?? {
+        canView: false,
+        canCreate: false,
+        canUpdate: false,
+        canDelete: false,
+      };
+      return {
+        moduleId: mod._id.toString(),
+        name: mod.name,
+        slug: mod.slug,
+        parentSlug: mod.parentSlug,
+        group: mod.group,
+        order: mod.order,
+        isRoot: true,
+        ...perms,
+      };
+    });
+  }
+
+  async bulkSetForUser(
+    userId: string,
+    rows: Array<{
+      moduleId: string;
+      canView?: boolean;
+      canCreate?: boolean;
+      canUpdate?: boolean;
+      canDelete?: boolean;
+    }>,
+  ): Promise<IUserPermission[]> {
+    const modules = await moduleRepository.findAllSorted();
+    const bySlug = buildModuleSlugMap(modules);
+    const allowedRootIds = new Set(
+      getRootModules(modules)
+        .filter((m) => isModuleVisibleForRole(m, bySlug, ROLES.SUB_ADMIN))
+        .map((m) => m._id.toString()),
+    );
+
+    for (const row of rows) {
+      if (!allowedRootIds.has(row.moduleId)) {
+        throw ApiError.badRequest('Permissions can only be set on modules available to Sub Admins');
+      }
+    }
+
+    return userPermissionRepository.bulkUpsert(userId, rows);
+  }
+
+  private async loadUserRootPermissionMap(
+    userId: string,
+  ): Promise<Map<string, Pick<IUserPermission, 'canView' | 'canCreate' | 'canUpdate' | 'canDelete'>>> {
+    const permissions = await userPermissionRepository.findByUserWithModules(userId);
+    const map = new Map<string, Pick<IUserPermission, 'canView' | 'canCreate' | 'canUpdate' | 'canDelete'>>();
+
+    for (const perm of permissions) {
+      const mod = perm.moduleId as unknown as IModule;
+      if (!mod?.isActive || mod.parentSlug) continue;
+      map.set(mod.slug, {
+        canView: perm.canView,
+        canCreate: perm.canCreate,
+        canUpdate: perm.canUpdate,
+        canDelete: perm.canDelete,
+      });
+    }
+
+    return map;
   }
 
   private async loadRootPermissionMap(

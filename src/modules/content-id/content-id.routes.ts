@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { contentIdController } from './content-id.controller';
 import { authenticate } from '@/middlewares/auth.middleware';
-import { checkPermission, superAdminOnly } from '@/middlewares/rbac.middleware';
+import { checkPermission } from '@/middlewares/rbac.middleware';
 import { validate } from '@/middlewares/validate.middleware';
 import {
   createContentIdSchema,
@@ -49,7 +49,7 @@ router.put(
 );
 router.patch(
   '/:id/status',
-  superAdminOnly,
+  checkPermission(MODULE, 'update'),
   validate({ params: idParamSchema, body: updateStatusSchema }),
   contentIdController.updateStatus,
 );

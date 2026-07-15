@@ -38,7 +38,7 @@ class DashboardService {
    * from this response — no hardcoded role logic on the client.
    */
   async getDashboard(roleId: string, roleSlug: string, userId: string): Promise<DashboardResponse> {
-    const modules = await permissionService.resolveForRole(roleId, roleSlug);
+    const modules = await permissionService.resolveForUser(roleId, roleSlug, userId);
 
     // Fast lookup map of slug -> action flags.
     const permMap = new Map<string, ResolvedModulePermission>();

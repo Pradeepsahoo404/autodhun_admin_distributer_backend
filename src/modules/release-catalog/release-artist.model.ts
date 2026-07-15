@@ -12,10 +12,13 @@ export interface IReleaseArtist extends Document {
 const releaseArtistSchema = new Schema<IReleaseArtist>(
   {
     name: { type: String, required: true, trim: true },
-    normalizedName: { type: String, required: true, trim: true, lowercase: true, unique: true, index: true },
-    createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    normalizedName: { type: String, required: true, trim: true, lowercase: true, index: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   },
   { timestamps: true },
 );
+
+/** Each user keeps their own artist catalog — same name allowed across different owners. */
+releaseArtistSchema.index({ createdBy: 1, normalizedName: 1 }, { unique: true });
 
 export const ReleaseArtistModel = model<IReleaseArtist>('ReleaseArtist', releaseArtistSchema);

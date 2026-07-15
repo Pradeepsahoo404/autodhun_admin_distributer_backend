@@ -7,9 +7,9 @@ const IFSC_PATTERN = /^[A-Za-z]{4}0[A-Za-z0-9]{6}$/;
 
 type ProfileCheckUser = Pick<IUser, 'bankDetails'>;
 
-/** True when required bank details are saved (Super Admin is always complete). */
+/** True when required bank details are saved (elevated accounts are always complete). */
 export function isProfileComplete(user: ProfileCheckUser, roleSlug: string): boolean {
-  if (roleSlug === ROLES.SUPER_ADMIN) return true;
+  if (roleSlug === ROLES.SUPER_ADMIN || roleSlug === ROLES.SUB_ADMIN) return true;
 
   const bank = user.bankDetails;
   const bankName = bank?.bankName?.trim() ?? '';

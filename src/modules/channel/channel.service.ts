@@ -14,10 +14,18 @@ import {
   CHANNEL_NOTIFICATION_CONFIG,
   channelNotificationsService,
 } from '@/modules/notification/channel-notifications.service';
+import {
+  buildCreatedByScope,
+  assertCreatedByAccess,
+  canManagePlatformWorkflow,
+  type ScopeActor,
+} from '@/utils/dataScope';
 
 interface Actor {
   id: string;
   isSuperAdmin: boolean;
+  isSubAdmin: boolean;
+  roleSlug: string;
   name?: string;
 }
 
@@ -29,16 +37,8 @@ function buildChannelSummary(item: IChannel): Record<string, string> {
   };
 }
 
-function assertOwnership(item: IChannel, actor: Actor): void {
-  if (actor.isSuperAdmin) return;
-  const createdBy = item.createdBy as unknown;
-  const ownerId =
-    createdBy && typeof createdBy === 'object' && '_id' in (createdBy as object)
-      ? String((createdBy as { _id: { toString(): string } })._id)
-      : String(createdBy);
-  if (ownerId !== actor.id) {
-    throw ApiError.forbidden('You can only modify your own channels');
-  }
+async function assertOwnership(item: IChannel, actor: Actor): Promise<void> {
+  await assertCreatedByAccess(actor as ScopeActor, item.createdBy);
 }
 
 function escapeCsv(value: string): string {
@@ -53,18 +53,18 @@ function formatDateTime(date: Date): string {
 }
 
 class ChannelService {
-  private scope(actor: Actor) {
-    return actor.isSuperAdmin ? {} : { createdBy: actor.id };
+  private async scope(actor: Actor) {
+    return buildCreatedByScope(actor as ScopeActor);
   }
 
   async list(query: ListQueryDto, actor: Actor): Promise<PaginatedResult<IChannel>> {
-    return channelRepository.paginate(query, this.scope(actor));
+    return channelRepository.paginate(query, await this.scope(actor));
   }
 
   async getById(id: string, actor: Actor): Promise<IChannel> {
     const item = await channelRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
     return item;
   }
 
@@ -89,7 +89,7 @@ class ChannelService {
   async update(id: string, dto: UpdateChannelDto, actor: Actor): Promise<IChannel> {
     const item = await channelRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
 
     const updated = await channelRepository.updateById(id, {
       ...dto,
@@ -100,12 +100,13 @@ class ChannelService {
   }
 
   async updateStatus(id: string, dto: UpdateStatusDto, actor: Actor): Promise<IChannel> {
-    if (!actor.isSuperAdmin) {
-      throw ApiError.forbidden('Only Super Admin can change channel status');
+    if (!canManagePlatformWorkflow(actor as ScopeActor)) {
+      throw ApiError.forbidden('Only Super Admin or Sub Admin can change channel status');
     }
 
-    const item = await channelRepository.findById(id);
+    const item = await channelRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel not found');
+    await assertOwnership(item, actor);
 
     await channelRepository.updateById(id, {
       status: dto.status,
@@ -127,13 +128,13 @@ class ChannelService {
   async remove(id: string, actor: Actor): Promise<void> {
     const item = await channelRepository.findByIdPopulated(id);
     if (!item) throw ApiError.notFound('Channel not found');
-    assertOwnership(item, actor);
+    await assertOwnership(item, actor);
     await channelRepository.deleteById(id);
   }
 
   async exportCsv(query: ExportQueryDto, actor: Actor): Promise<string> {
     const items = await channelRepository.findForExport({
-      ...this.scope(actor),
+      ...(await this.scope(actor)),
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
     });

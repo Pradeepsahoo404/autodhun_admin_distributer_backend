@@ -1,7 +1,4 @@
-import { ROLES, USER_STATUS } from '@/constants';
 import { env } from '@/config/env';
-import { roleRepository } from '@/modules/role/role.repository';
-import { UserModel } from '@/modules/user/user.model';
 import { IMusicRelease } from '@/modules/music-release/music-release.model';
 import {
   MUSIC_RELEASE_STATUS,
@@ -11,6 +8,7 @@ import { NOTIFICATION_TYPE } from './notification.model';
 import { notificationRepository } from './notification.repository';
 import { buildReleaseStatusUpdateEmail, sendMail } from '@/utils/email';
 import { logger } from '@/config/logger';
+import { findOversightRecipientIds } from './notification-recipients';
 
 interface Actor {
   id: string;
@@ -87,20 +85,6 @@ function buildReleaseSummary(release: IMusicRelease, extra?: Record<string, stri
 }
 
 class ReleaseNotificationsService {
-  private async findSuperAdminIds(): Promise<string[]> {
-    const role = await roleRepository.findBySlug(ROLES.SUPER_ADMIN);
-    if (!role) return [];
-
-    const users = await UserModel.find({
-      role: role._id,
-      status: USER_STATUS.ACTIVE,
-    })
-      .select('_id')
-      .exec();
-
-    return users.map((u) => u._id.toString());
-  }
-
   private buildContentDeliveryRoute(releaseId: string): string {
     return `${CONTENT_DELIVERY_MODULE.route}?entry=${releaseId}`;
   }
@@ -159,11 +143,11 @@ class ReleaseNotificationsService {
 
     try {
       const releaseId = release._id.toString();
-      const superAdminIds = await this.findSuperAdminIds();
-      if (superAdminIds.length === 0) return;
+      const recipientIds = await findOversightRecipientIds(actor.id, CONTENT_DELIVERY_MODULE.slug);
+      if (recipientIds.length === 0) return;
 
       const creatorName = actor.name ?? 'Admin';
-      const payloads = superAdminIds.map((recipientId) => ({
+      const payloads = recipientIds.map((recipientId) => ({
         recipient: recipientId as never,
         type: NOTIFICATION_TYPE.RELEASE_CREATED,
         moduleSlug: CONTENT_DELIVERY_MODULE.slug,
@@ -178,7 +162,7 @@ class ReleaseNotificationsService {
 
       await notificationRepository.createMany(payloads);
     } catch (error) {
-      logger.error('Failed to notify super admins of new release', { error });
+      logger.error('Failed to notify reviewers of new release', { error });
     }
   }
 
@@ -191,8 +175,8 @@ class ReleaseNotificationsService {
 
     try {
       const releaseId = release._id.toString();
-      const superAdminIds = await this.findSuperAdminIds();
-      if (superAdminIds.length === 0) return;
+      const recipientIds = await findOversightRecipientIds(actor.id, CONTENT_DELIVERY_MODULE.slug);
+      if (recipientIds.length === 0) return;
 
       const creatorName = actor.name ?? 'Admin';
       const resubmitted = previousStatus === MUSIC_RELEASE_STATUS.CORRECTION;
@@ -200,7 +184,7 @@ class ReleaseNotificationsService {
         ? `${creatorName} resubmitted a release after correction.`
         : `${creatorName} updated a release submission.`;
 
-      const payloads = superAdminIds.map((recipientId) => ({
+      const payloads = recipientIds.map((recipientId) => ({
         recipient: recipientId as never,
         type: NOTIFICATION_TYPE.RELEASE_UPDATED,
         moduleSlug: CONTENT_DELIVERY_MODULE.slug,
@@ -217,7 +201,7 @@ class ReleaseNotificationsService {
 
       await notificationRepository.createMany(payloads);
     } catch (error) {
-      logger.error('Failed to notify super admins of release update', { error });
+      logger.error('Failed to notify reviewers of release update', { error });
     }
   }
 

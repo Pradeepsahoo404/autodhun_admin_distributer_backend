@@ -66,3 +66,26 @@ export const resendInviteSchema = z.object({
 
 export type InviteAdminDto = z.infer<typeof inviteAdminSchema>;
 export type ResendInviteDto = z.infer<typeof resendInviteSchema>;
+
+const permissionRowSchema = z.object({
+  moduleId: objectId,
+  canView: z.boolean().optional().default(false),
+  canCreate: z.boolean().optional().default(false),
+  canUpdate: z.boolean().optional().default(false),
+  canDelete: z.boolean().optional().default(false),
+});
+
+export const inviteSubAdminSchema = z.object({
+  firstName: nameField('First name'),
+  lastName: optionalNameField('Last name'),
+  email: z.string().email('Enter a valid email').toLowerCase(),
+  personalMessage: z.string().trim().max(500, 'Message must be at most 500 characters').optional(),
+  permissions: z.array(permissionRowSchema).min(1, 'At least one module permission is required'),
+});
+
+export const updateSubAdminPermissionsSchema = z.object({
+  permissions: z.array(permissionRowSchema).min(1, 'At least one module permission is required'),
+});
+
+export type InviteSubAdminDto = z.infer<typeof inviteSubAdminSchema>;
+export type UpdateSubAdminPermissionsDto = z.infer<typeof updateSubAdminPermissionsSchema>;
