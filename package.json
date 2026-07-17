@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
     "start": "node dist/server.js",
     "seed": "ts-node -r tsconfig-paths/register src/seeders/index.ts",
+    "cleanup:roles": "ts-node -r tsconfig-paths/register src/scripts/cleanup-roles.ts",
     "seed:prod": "node dist/seeders/index.js",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit"
